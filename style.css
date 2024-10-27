@@ -1,103 +1,120 @@
-/* Reset and base styles */
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+/* Reset default Streamlit styling */
+.stApp {
+  background-color: #ffffff !important;
 }
 
-/* Hide Streamlit components */
-#MainMenu {
-  visibility: hidden;
+.main .block-container {
+  max-width: 1000px !important;
+  padding-top: 2rem !important;
+  padding-bottom: 3rem !important;
+  padding-left: 1rem !important;
+  padding-right: 1rem !important;
 }
-footer {
-  visibility: hidden;
-}
+
+/* Hide Streamlit default elements */
+#MainMenu,
+footer,
 header {
-  visibility: hidden;
+  visibility: hidden !important;
 }
 
-.stApp > header {
+.stDeployButton,
+div[data-testid='stToolbar'] {
   display: none !important;
 }
 
-div[data-testid='stToolbar'] {
-  display: none;
-}
-
-/* Main container modifications */
-.main .block-container {
-  padding: 0 !important;
-  max-width: 1000px !important;
-}
-
-.main {
-  padding: 0;
-}
-
-/* Remove default margins and padding */
-.stMarkdown {
-  margin: 0 !important;
-  padding: 0 !important;
-}
-
-/* Chat interface styling */
-.chat-container {
-  background-color: #efeae2;
-  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%239e9e9e' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
-  min-height: calc(100vh - 180px);
-  padding: 1rem;
-  margin: 0 auto;
-  position: relative;
-}
-
-/* Chat messages */
+/* Chat message container */
 .chat-message {
   display: flex;
   align-items: flex-start;
   margin-bottom: 1rem;
-  position: relative;
+  padding: 0.5rem;
+  animation: fadeIn 0.3s ease-in;
 }
 
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Message bubbles */
 .message-bubble {
   padding: 0.8rem 1rem;
   border-radius: 10px;
-  max-width: 70%;
+  max-width: 80%;
   position: relative;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
-.user .message-bubble {
-  background-color: #dcf8c6;
+/* User message */
+.chat-message.user {
+  justify-content: flex-end;
+}
+
+.chat-message.user .message-bubble {
+  background-color: #e3f2fd;
   margin-left: auto;
   border-radius: 10px 10px 0 10px;
 }
 
-.assistant .message-bubble {
-  background-color: white;
+/* Assistant message */
+.chat-message.assistant {
+  justify-content: flex-start;
+}
+
+.chat-message.assistant .message-bubble {
+  background-color: #f5f5f5;
   margin-right: auto;
   border-radius: 10px 10px 10px 0;
 }
 
+.chat-message.assistant .avatar {
+  width: 35px;
+  height: 35px;
+  border-radius: 50%;
+  margin-right: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #e0e0e0;
+  font-size: 1.2rem;
+}
+
+/* Message info (time and status) */
 .message-info {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 4px;
   margin-top: 4px;
-}
-
-.message-time {
   font-size: 0.7rem;
   color: #888;
 }
 
-.message-status {
-  color: #4fc3f7;
-  font-size: 0.7rem;
+/* Date divider */
+.date-divider {
+  text-align: center;
+  margin: 1rem 0;
+  position: relative;
 }
 
-/* Chat input area */
-.chat-input-container {
+.date-divider span {
+  background: rgba(255, 255, 255, 0.8);
+  padding: 0.5rem 1rem;
+  border-radius: 15px;
+  font-size: 0.8rem;
+  color: #666;
+  border: 1px solid #eee;
+}
+
+/* Input form styling */
+form.chat-input {
   position: fixed;
   bottom: 0;
   left: 0;
@@ -105,16 +122,10 @@ div[data-testid='stToolbar'] {
   background: white;
   padding: 1rem;
   box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
-  z-index: 1000;
+  z-index: 100;
 }
 
-/* Form elements */
-.stForm {
-  background: white;
-  border-radius: 8px;
-  padding: 0.5rem;
-}
-
+/* Streamlit form elements */
 .stTextInput > div {
   padding: 0 !important;
 }
@@ -142,7 +153,6 @@ div[data-testid='stToolbar'] {
   color: white !important;
   font-weight: 500 !important;
   font-size: 1rem !important;
-  cursor: pointer !important;
   transition: all 0.3s ease !important;
 }
 
@@ -153,60 +163,34 @@ div[data-testid='stToolbar'] {
 }
 
 /* Sidebar styling */
-.sidebar .stSidebar {
+section[data-testid='stSidebar'] {
   background-color: white;
   padding: 2rem 1rem;
 }
 
-/* Avatar and user info */
-.avatar {
-  width: 35px;
-  height: 35px;
-  border-radius: 50%;
-  margin-right: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #e0e0e0;
-  font-size: 1.2rem;
+section[data-testid='stSidebar'] > div {
+  padding: 0;
 }
 
-/* Date divider */
-.date-divider {
-  text-align: center;
-  margin: 1rem 0;
-  position: relative;
+/* Login form styling */
+.login-container {
+  max-width: 400px;
+  margin: 2rem auto;
+  padding: 2rem;
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
 
-.date-divider span {
-  background: rgba(255, 255, 255, 0.8);
-  padding: 0.5rem 1rem;
-  border-radius: 15px;
-  font-size: 0.8rem;
-  color: #666;
+/* Form elements in sidebar */
+section[data-testid='stSidebar'] .stForm {
+  background: #f8f9fa;
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
 }
 
-/* Loading spinner */
-.loading-spinner {
-  display: inline-block;
-  width: 20px;
-  height: 20px;
-  border: 2px solid #f3f3f3;
-  border-top: 2px solid #4caf50;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
-}
-
-/* Scrollbar customization */
+/* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -225,78 +209,25 @@ div[data-testid='stToolbar'] {
   background: #666;
 }
 
-/* Markdown text styling */
-.markdown-text {
-  line-height: 1.6;
-}
-
-.markdown-text p {
-  margin-bottom: 1rem;
-}
-
-.markdown-text code {
-  background: #f5f5f5;
-  padding: 0.2rem 0.4rem;
-  border-radius: 4px;
-  font-size: 0.9em;
-}
-
 /* Mobile responsiveness */
 @media screen and (max-width: 768px) {
+  .main .block-container {
+    padding: 1rem !important;
+  }
+
   .message-bubble {
     max-width: 85%;
   }
 
-  .chat-input-container {
+  form.chat-input {
     padding: 0.5rem;
   }
 
   .stButton > button {
     padding: 0.5rem !important;
   }
-}
 
-/* Login/Register styling */
-.login-container {
-  max-width: 400px;
-  margin: 2rem auto;
-  padding: 2rem;
-  background: white;
-  border-radius: 10px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-}
-
-.login-logo {
-  text-align: center;
-  margin-bottom: 2rem;
-}
-
-.input-group {
-  margin-bottom: 1rem;
-}
-
-.input-group label {
-  display: block;
-  margin-bottom: 0.5rem;
-  color: #666;
-}
-
-/* Form help text */
-.help-text {
-  font-size: 0.8rem;
-  color: #666;
-  margin-top: 0.25rem;
-}
-
-/* Password requirements box */
-.password-requirements {
-  background: #f8f9fa;
-  padding: 1rem;
-  border-radius: 5px;
-  margin: 1rem 0;
-}
-
-.password-requirements ul {
-  margin: 0;
-  padding-left: 1.5rem;
+  section[data-testid='stSidebar'] {
+    padding: 1rem 0.5rem;
+  }
 }
