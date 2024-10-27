@@ -282,25 +282,25 @@ def handle_sidebar():
         st.rerun()
 
 def process_file(uploaded_file):
-    with st.spinner("Memproses file..."):
-        try:
+    try:
+        with st.spinner("Memproses file..."):
             file_path = save_uploaded_file(uploaded_file)
             content = read_file(file_path)
             st.session_state.documents.append(content)
             st.session_state.processed_files.append(uploaded_file.name)
             st.success(f"File '{uploaded_file.name}' berhasil diproses!")
-        except Exception as e:
-            st.error(f"Gagal memproses file: {str(e)}")
+    except Exception as e:
+        st.error(f"Gagal memproses file: {str(e)}")
 
 def process_url(url):
-    with st.spinner("Memproses URL..."):
-        try:
+    try:
+        with st.spinner("Memproses URL..."):
             content = read_url(url)
             st.session_state.documents.append(content)
             st.session_state.processed_urls.append(url)
             st.success(f"URL '{url}' berhasil diproses!")
-        except Exception as e:
-            st.error(f"Gagal memproses URL: {str(e)}")
+    except Exception as e:
+        st.error(f"Gagal memproses URL: {str(e)}")
 
 def handle_query(query):
     try:
@@ -367,32 +367,49 @@ def create_search_index():
         st.error(f"Gagal membuat index: {str(e)}")
 
 def clean_session_data():
+    """
+    Membersihkan semua data dari session state dan mengembalikan aplikasi ke keadaan awal
+    """
     try:
         with st.spinner("Membersihkan data..."):
+            # Reset semua nilai ke default
             st.session_state.documents = []
             st.session_state.embeddings = []
+            st.session_state.chat_history = []
+            st.session_state.conversation_history = []
             st.session_state.index = None
             st.session_state.processed_files = []
             st.session_state.processed_urls = []
             st.session_state.clear_url = True
-            st.success("Data berhasil dibersihkan")
+            
+            # Tampilkan pesan sukses
+            st.success("Semua data berhasil dibersihkan!")
+            
+            # Refresh tampilan
             st.rerun()
+            
     except Exception as e:
         st.error(f"Gagal membersihkan data: {str(e)}")
 
 def main():
+    """
+    Fungsi utama untuk menjalankan aplikasi
+    """
     initialize_session_state()
 
+    # Cek autentikasi
     if 'token' not in st.session_state:
         render_login_page()
         return
 
+    # Verifikasi user session
     user = get_current_user()
     if not user:
         st.session_state.token = None
         st.rerun()
         return
 
+    # Render main application
     with st.sidebar:
         handle_sidebar()
     handle_main_area()

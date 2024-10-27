@@ -23,3 +23,5 @@ Env Menggunakan Groq Cloud Key dan Database Cloud Menggunakan Supabase
 DATABASE_URL = "postgresql://postgres.dltxpmhhuwpopnhyrijt:[password]@aws-0-ap-southeast-1.pooler.supabase.com:6543/namadatabase"
 GROQ_API_KEY = ""
 JWT_SECRET_KEY=""
+
+Note: Python version 3.11
