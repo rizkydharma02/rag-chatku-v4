@@ -21,11 +21,9 @@ def set_api_key(api_key):
     if api_key:
         try:
             groq_client = Groq(api_key=api_key)
-            print(f"API key set successfully: {api_key[:5]}...")  # Debug print
         except Exception as e:
             print(f"Error setting API key: {str(e)}")
     else:
-        print("Warning: Empty API key provided")
         groq_client = None
 
 def get_available_models():
@@ -37,16 +35,14 @@ def read_pdf(file_path):
             pdf_reader = PyPDF2.PdfReader(file)
             return "\n".join(page.extract_text() for page in pdf_reader.pages)
     except Exception as e:
-        print(f"Error reading PDF: {str(e)}")
-        raise
+        raise Exception(f"Error reading PDF: {str(e)}")
 
 def read_docx(file_path):
     try:
         doc = docx.Document(file_path)
         return "\n".join(para.text for para in doc.paragraphs)
     except Exception as e:
-        print(f"Error reading DOCX: {str(e)}")
-        raise
+        raise Exception(f"Error reading DOCX: {str(e)}")
 
 @st.cache_data
 def read_url(url):
@@ -56,8 +52,7 @@ def read_url(url):
         soup = BeautifulSoup(response.content, 'html.parser')
         return soup.get_text()
     except Exception as e:
-        print(f"Error reading URL: {str(e)}")
-        raise
+        raise Exception(f"Error reading URL: {str(e)}")
 
 def read_file(file_path):
     _, file_extension = os.path.splitext(file_path)
@@ -70,21 +65,15 @@ def read_file(file_path):
 
 def generate_embedding(text, model):
     try:
-        embedding = model.encode(text)
-        print(f"Generated embedding of shape: {embedding.shape}")  # Debug print
-        return embedding
+        return model.encode(text)
     except Exception as e:
-        print(f"Error generating embedding: {str(e)}")
-        raise
+        raise Exception(f"Error generating embedding: {str(e)}")
 
 def query_llm(prompt, model_name):
     try:
         if groq_client is None:
             raise ValueError("Please enter a valid API key first.")
             
-        print(f"Sending query to Groq with model: {model_name}")
-        print(f"Prompt length: {len(prompt)} characters")
-        
         completion = groq_client.chat.completions.create(
             model=model_name,
             messages=[
@@ -95,77 +84,52 @@ def query_llm(prompt, model_name):
             max_tokens=1000
         )
         
-        response = completion.choices[0].message.content
-        print(f"Received response of length: {len(response)} characters")
-        return response
+        return completion.choices[0].message.content
     except Exception as e:
-        print(f"LLM query error: {str(e)}")
         return f"An error occurred while querying the LLM: {str(e)}"
 
 def save_uploaded_file(uploaded_file):
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as tmp_file:
             tmp_file.write(uploaded_file.getbuffer())
-            print(f"Saved uploaded file to: {tmp_file.name}")  # Debug print
             return tmp_file.name
     except Exception as e:
-        print(f"Error saving uploaded file: {str(e)}")
-        raise
+        raise Exception(f"Error saving uploaded file: {str(e)}")
 
 def create_index(embeddings):
     try:
         if not embeddings:
-            print("No embeddings provided to create index")
             return None
             
         embeddings_array = np.array(embeddings)
-        print(f"Creating index with embeddings shape: {embeddings_array.shape}")  # Debug print
-        
         dimension = embeddings_array.shape[1]
         index = faiss.IndexFlatL2(dimension)
         index.add(embeddings_array.astype('float32'))
         
-        print(f"Created index with {index.ntotal} vectors")  # Debug print
         return index
     except Exception as e:
-        print(f"Error creating index: {str(e)}")
-        raise
+        raise Exception(f"Error creating index: {str(e)}")
 
 def search_index(index, query_embedding, k=3):
     try:
         if index is None:
-            print("No index available for search")
             return []
             
-        print(f"Searching index with query embedding shape: {query_embedding.shape}")  # Debug print
         D, I = index.search(np.array([query_embedding]).astype('float32'), k)
-        print(f"Found {len(I[0])} matches")  # Debug print
         return I[0]
     except Exception as e:
-        print(f"Error searching index: {str(e)}")
-        raise
+        raise Exception(f"Error searching index: {str(e)}")
 
 def validate_api_key_format(api_key: str) -> bool:
-    """
-    Validate the format of a GROQ API key
-    
-    Args:
-        api_key (str): The API key to validate
-        
-    Returns:
-        bool: True if valid format, False otherwise
-    """
     try:
         if not api_key:
             return False
             
         api_key = api_key.strip()
         
-        # Check prefix
         if not api_key.startswith('gsk_'):
             return False
             
-        # Check length
         if len(api_key) < 20:
             return False
             

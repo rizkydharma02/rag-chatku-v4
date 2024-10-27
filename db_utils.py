@@ -11,7 +11,7 @@ import logging
 import uuid
 
 # Set up logging
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Load environment variables
@@ -82,7 +82,6 @@ class DatabaseManager:
             logger.info("Database connection closed")
 
     def authenticate_user(self, email: str, password: str):
-        """Authenticate user"""
         try:
             user = self.db.query(User).filter(User.email == email).first()
             if not user:
@@ -99,7 +98,6 @@ class DatabaseManager:
             return None
 
     def create_user(self, email: str, password: str, groq_api_key: str = None):
-        """Create new user"""
         try:
             existing_user = self.db.query(User).filter(User.email == email).first()
             if existing_user:
@@ -124,7 +122,6 @@ class DatabaseManager:
             return None
 
     def save_api_key(self, user_id: str, api_key: str) -> bool:
-        """Save API key for user"""
         try:
             logger.info(f"Attempting to save API key for user ID: {user_id}")
             
@@ -162,7 +159,6 @@ class DatabaseManager:
             return False
 
     def get_api_key(self, user_id: str) -> str:
-        """Get API key for user"""
         try:
             if isinstance(user_id, str):
                 user_id = uuid.UUID(user_id)
