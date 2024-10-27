@@ -174,6 +174,18 @@ def handle_sidebar():
     with st.sidebar.expander("API Settings"):
         current_api_key = st.session_state.get('api_key', '')
         
+        # Tambahkan informasi tentang GROQ API Key
+        st.markdown("""
+            ### Cara Mendapatkan GROQ API Key
+            1. Kunjungi [console.groq.com](https://console.groq.com/)
+            2. Buat akun atau login jika sudah punya akun
+            3. Di dashboard, klik "API Keys"
+            4. Klik "Create API Key"
+            5. Copy API Key yang dihasilkan
+            
+            API Key biasanya dimulai dengan 'gsk_'
+        """)
+        
         if current_api_key:
             st.success("API Key sudah terpasang")
         else:
@@ -184,7 +196,8 @@ def handle_sidebar():
                 "GROQ API Key",
                 value=current_api_key,
                 type="password",
-                placeholder="Masukkan GROQ API Key Anda"
+                placeholder="Masukkan GROQ API Key Anda",
+                help="Dapatkan API key dari https://console.groq.com/"
             )
             
             if st.form_submit_button("Simpan API Key"):
