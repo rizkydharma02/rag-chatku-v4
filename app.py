@@ -332,25 +332,21 @@ def handle_sidebar():
         return
 
     # User profile section
-    st.sidebar.markdown("""
-        <div style='padding: 1rem; background: white; border-radius: 10px; margin-bottom: 1rem;'>
-            <div style='display: flex; align-items: center; gap: 0.5rem;'>
-                <div style='font-size: 1.5rem;'>👤</div>
-                <div>
-                    <div style='font-weight: 500;'>{}</div>
-                    <div style='font-size: 0.8rem; color: #4caf50;'>Online</div>
-                </div>
+    st.sidebar.markdown(f"""
+        <div style='margin-bottom: 1rem;'>
+            <div style='display: flex; align-items: center;'>
+                <div style='font-size: 1.5rem; margin-right: 0.5rem;'>👤</div>
+                <div style='font-size: 1rem;'>{user["email"]}</div>
             </div>
         </div>
-    """.format(user["email"]), unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
     
     st.sidebar.markdown("---")
     
     # API Key section
-    with st.sidebar.expander("API Settings", expanded=True):
-        st.write("#### GROQ API Key Configuration")
-        
+    with st.sidebar.expander("API Settings"):
         current_api_key = st.session_state.get('api_key', '')
+        
         if current_api_key:
             st.success("API Key sudah terpasang")
         else:
@@ -361,15 +357,10 @@ def handle_sidebar():
                 "GROQ API Key",
                 value=current_api_key,
                 type="password",
-                help="Dapatkan API key dari https://console.groq.com",
                 placeholder="Masukkan GROQ API Key Anda"
             )
             
-            submitted = st.form_submit_button(
-                "Simpan API Key",
-                type="primary",
-                use_container_width=True
-            )
+            submitted = st.form_submit_button("Simpan API Key")
             
             if submitted:
                 if not new_api_key:
@@ -394,46 +385,45 @@ def handle_sidebar():
                     except Exception as e:
                         st.error(f"Terjadi kesalahan: {str(e)}")
 
-    # Model selection
-    with st.sidebar.expander("Model Settings", expanded=False):
+    # Model Settings
+    with st.sidebar.expander("Model Settings"):
         with st.form("model_settings_form"):
             available_models = get_available_models()
             selected_model = st.selectbox(
-                "Pilih LLM Model:",
+                "Pilih LLM Model",
                 available_models,
-                index=available_models.index(st.session_state.selected_model) if st.session_state.selected_model in available_models else 0
+                index=available_models.index(st.session_state.selected_model) 
+                    if st.session_state.selected_model in available_models else 0
             )
 
             embedding_models = ["all-MiniLM-L6-v2"]
             selected_embedding_model = st.selectbox(
-                "Pilih Embedding Model:",
+                "Pilih Embedding Model",
                 embedding_models,
                 index=0
             )
             
-            submitted = st.form_submit_button("Simpan Model", type="primary", use_container_width=True)
+            submitted = st.form_submit_button("Simpan Model")
             if submitted:
                 st.session_state.selected_model = selected_model
                 st.session_state.selected_embedding_model = selected_embedding_model
                 st.success("Model berhasil diperbarui!")
 
     # Document Processing
-    with st.sidebar.expander("Document Processing", expanded=False):
+    with st.sidebar.expander("Document Processing"):
         with st.form("document_processing_form"):
             uploaded_file = st.file_uploader(
                 "Upload File (PDF/Word)",
-                type=['pdf', 'docx'],
-                help="Upload dokumen untuk diproses"
+                type=['pdf', 'docx']
             )
             
             url = st.text_input(
                 "URL Input",
                 value="" if st.session_state.clear_url else st.session_state.get('url', ''),
-                placeholder="Atau masukkan URL",
-                help="Masukkan URL untuk mengekstrak konten"
+                placeholder="Atau masukkan URL"
             )
             
-            submitted = st.form_submit_button("Proses File/URL", type="primary", use_container_width=True)
+            submitted = st.form_submit_button("Proses File/URL")
             if submitted:
                 try:
                     if uploaded_file:
@@ -446,58 +436,37 @@ def handle_sidebar():
                     st.error(f"Gagal memproses: {str(e)}")
 
         # Embeddings and index generation
-        with st.form("embeddings_form"):
-            st.markdown("""
-                <style>
-                .embeddings-form {
-                    background: #f8f9fa;
-                    padding: 1rem;
-                    border-radius: 8px;
-                    margin-bottom: 1rem;
-                }
-                </style>
-            """, unsafe_allow_html=True)
-            
-            generate_embeddings_button = st.form_submit_button(
+        with st.form("embeddings_form"):            
+            st.form_submit_button(
                 "Generate Embeddings",
-                type="primary",
                 use_container_width=True
             )
             
-            create_index_button = st.form_submit_button(
+            st.form_submit_button(
                 "Buat Index",
-                type="primary",
                 use_container_width=True
             )
-            
-            if generate_embeddings_button:
-                generate_embeddings()
-            if create_index_button:
-                create_search_index()
 
         # Display processed items
         if st.session_state.processed_files or st.session_state.processed_urls:
-            st.markdown("### Dokumen yang Diproses")
-            
             if st.session_state.processed_files:
-                st.markdown("#### File:")
+                st.markdown("**Files yang diproses:**")
                 for file in st.session_state.processed_files:
                     st.markdown(f"- {file}")
 
             if st.session_state.processed_urls:
-                st.markdown("#### URL:")
+                st.markdown("**URLs yang diproses:**")
                 for url in st.session_state.processed_urls:
                     st.markdown(f"- {url}")
 
         # Clear data button
         with st.form("clear_data_form"):
-            if st.form_submit_button("Hapus Semua Data", type="primary", use_container_width=True):
-                clean_session_data()
+            st.form_submit_button("Hapus Semua Data")
 
     # Logout section
     st.sidebar.markdown("---")
     with st.sidebar.form("logout_form"):
-        if st.form_submit_button("Logout", type="primary", use_container_width=True):
+        if st.form_submit_button("Logout"):
             logout_user()
             st.rerun()
 

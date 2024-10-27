@@ -3,24 +3,22 @@
   background-color: #ffffff !important;
 }
 
-.main .block-container {
-  max-width: 1000px !important;
+div.block-container {
   padding-top: 2rem !important;
   padding-bottom: 3rem !important;
-  padding-left: 1rem !important;
-  padding-right: 1rem !important;
+  padding-left: 2rem !important;
+  padding-right: 2rem !important;
 }
 
 /* Hide Streamlit default elements */
-#MainMenu,
-footer,
-header {
-  visibility: hidden !important;
+#MainMenu {
+  visibility: hidden;
 }
-
-.stDeployButton,
-div[data-testid='stToolbar'] {
-  display: none !important;
+footer {
+  visibility: hidden;
+}
+header {
+  visibility: hidden;
 }
 
 /* Chat message container */
@@ -29,18 +27,6 @@ div[data-testid='stToolbar'] {
   align-items: flex-start;
   margin-bottom: 1rem;
   padding: 0.5rem;
-  animation: fadeIn 0.3s ease-in;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 /* Message bubbles */
@@ -49,7 +35,6 @@ div[data-testid='stToolbar'] {
   border-radius: 10px;
   max-width: 80%;
   position: relative;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 /* User message */
@@ -86,15 +71,12 @@ div[data-testid='stToolbar'] {
   font-size: 1.2rem;
 }
 
-/* Message info (time and status) */
+/* Message info */
 .message-info {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-  margin-top: 4px;
   font-size: 0.7rem;
   color: #888;
+  margin-top: 4px;
+  text-align: right;
 }
 
 /* Date divider */
@@ -105,7 +87,6 @@ div[data-testid='stToolbar'] {
 }
 
 .date-divider span {
-  background: rgba(255, 255, 255, 0.8);
   padding: 0.5rem 1rem;
   border-radius: 15px;
   font-size: 0.8rem;
@@ -113,121 +94,49 @@ div[data-testid='stToolbar'] {
   border: 1px solid #eee;
 }
 
-/* Input form styling */
-form.chat-input {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: white;
-  padding: 1rem;
-  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
-  z-index: 100;
+/* Form styling */
+.stForm {
+  padding: 0 !important;
+  margin-bottom: 1rem !important;
 }
 
-/* Streamlit form elements */
+/* Input styling */
 .stTextInput > div {
   padding: 0 !important;
 }
 
 .stTextInput > div > div > input {
-  padding: 0.75rem 1rem !important;
-  border-radius: 20px !important;
-  border: 1px solid #e0e0e0 !important;
-  background-color: #f8f9fa !important;
-  font-size: 0.95rem !important;
-}
-
-.stTextInput > div > div > input:focus {
-  border-color: #4caf50 !important;
-  box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2) !important;
+  padding: 0.5rem !important;
 }
 
 /* Button styling */
 .stButton > button {
   width: 100%;
-  padding: 0.75rem !important;
-  border: none !important;
-  border-radius: 8px !important;
-  background-color: #4caf50 !important;
-  color: white !important;
-  font-weight: 500 !important;
-  font-size: 1rem !important;
-  transition: all 0.3s ease !important;
-}
-
-.stButton > button:hover {
-  background-color: #45a049 !important;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  padding: 0.5rem !important;
+  margin-bottom: 0.5rem !important;
 }
 
 /* Sidebar styling */
 section[data-testid='stSidebar'] {
-  background-color: white;
-  padding: 2rem 1rem;
+  background-color: #ffffff;
 }
 
 section[data-testid='stSidebar'] > div {
-  padding: 0;
+  padding: 2rem 1rem;
 }
 
-/* Login form styling */
-.login-container {
-  max-width: 400px;
-  margin: 2rem auto;
-  padding: 2rem;
-  background: white;
-  border-radius: 10px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+/* Expander styling */
+.streamlit-expanderHeader {
+  font-size: 1rem;
+  font-weight: 500;
 }
 
-/* Form elements in sidebar */
-section[data-testid='stSidebar'] .stForm {
-  background: #f8f9fa;
-  padding: 1rem;
-  border-radius: 8px;
-  margin-bottom: 1rem;
+/* File uploader styling */
+.stFileUploader > div {
+  padding: 0 !important;
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #888;
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #666;
-}
-
-/* Mobile responsiveness */
-@media screen and (max-width: 768px) {
-  .main .block-container {
-    padding: 1rem !important;
-  }
-
-  .message-bubble {
-    max-width: 85%;
-  }
-
-  form.chat-input {
-    padding: 0.5rem;
-  }
-
-  .stButton > button {
-    padding: 0.5rem !important;
-  }
-
-  section[data-testid='stSidebar'] {
-    padding: 1rem 0.5rem;
-  }
+/* Select box styling */
+.stSelectbox > div {
+  padding: 0 !important;
 }
