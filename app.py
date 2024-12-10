@@ -153,24 +153,10 @@ def display_chat_history():
         st.write("---")
 
 def handle_query(query):
-    """
-    Fungsi untuk menangani query dari user dan mendapatkan respons
-    """
     try:
-        # Cek API key
-        if not st.session_state.api_key:
-            st.error("API key belum diatur. Silakan atur GROQ API key terlebih dahulu.")
-            return False
-
-        # Set API key dan inisialisasi client
-        if not set_api_key(st.session_state.api_key):
-            st.error("Gagal menginisialisasi GROQ client. Pastikan API key valid.")
-            return False
-
-        # Tambahkan query ke history
         st.session_state.conversation_history.append({"role": "user", "content": query})
 
-        # Siapkan prompt dengan konteks jika ada
+        # Prepare prompt with context if available
         final_prompt = query
         if st.session_state.index is not None and len(st.session_state.documents) > 0:
             try:
@@ -179,33 +165,35 @@ def handle_query(query):
                     query_embedding = generate_embedding(query, model)
                     relevant_doc_indices = search_index(st.session_state.index, query_embedding)
                     context = "\n".join([st.session_state.documents[i][:1000] for i in relevant_doc_indices])
-                    final_prompt = f"""Konteks: {context}\n\nPertanyaan: {query}\n\nBerikan jawaban berdasarkan konteks di atas jika relevan."""
+                    final_prompt = f"Konteks: {context}\n\nPertanyaan: {query}\n\nBerikan jawaban berdasarkan konteks di atas jika relevan."
             except Exception as e:
-                st.warning(f"Gagal mencari konteks: {str(e)}. Menggunakan query langsung.")
+                st.warning(f"Gagal menggunakan konteks: {str(e)}. Menggunakan query langsung.")
                 final_prompt = query
 
-        # Dapatkan respons dari model
+        # Get response from model
         with st.spinner("Menghasilkan respons..."):
-            st.write("Debug: Mengirim request ke model...")
             response = query_llm(final_prompt, st.session_state.selected_model)
-            st.write(f"Debug: Respons diterima: {response[:100] if response else 'No response'}...")
 
-        # Tangani respons
-        if response and not isinstance(response, str):
-            response = str(response)
+        # Handle response
+        if response:
+            if response.startswith("Silakan masukkan GROQ API key"):
+                st.info(response)
+                return False
+                
+            if response.startswith("Terjadi kesalahan"):
+                st.error(response)
+                return False
 
-        if response and not response.lower().startswith(("error", "terjadi kesalahan", "maaf")):
-            # Update history dengan respons yang berhasil
             st.session_state.conversation_history.append({"role": "assistant", "content": response})
             st.session_state.chat_history.append(("user", query))
             st.session_state.chat_history.append(("assistant", response))
             return True
-        else:
-            st.error(f"Gagal mendapatkan respons yang valid: {response}")
-            return False
+
+        st.error("Tidak ada respons dari model")
+        return False
 
     except Exception as e:
-        st.error(f"Terjadi kesalahan dalam handle_query: {str(e)}")
+        st.error(f"Terjadi kesalahan: {str(e)}")
         return False
 
 def handle_main_area():
