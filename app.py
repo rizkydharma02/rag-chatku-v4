@@ -2,7 +2,6 @@ import streamlit as st
 import time
 from datetime import datetime
 
-# Must be the first Streamlit command
 st.set_page_config(
     page_title="Chatku AI",
     page_icon="🤖",
@@ -22,7 +21,6 @@ from auth_utils import (
 )
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
 
 def initialize_session_state():
@@ -42,7 +40,8 @@ def initialize_session_state():
         'selected_embedding_model': "all-MiniLM-L6-v2",
         'api_key': "",
         'current_query': "",
-        'last_timestamp': None
+        'last_timestamp': None,
+        'error_log': []
     }
     
     for key, default_value in default_values.items():
@@ -69,7 +68,11 @@ def render_login_page():
                             st.success("✅ Berhasil login!")
                             if result["user"].get("groq_api_key"):
                                 st.session_state.api_key = result["user"]["groq_api_key"]
-                                set_api_key(result["user"]["groq_api_key"])
+                                if set_api_key(result["user"]["groq_api_key"]):
+                                    if initialize_groq_client(st.session_state.api_key):
+                                        st.success("API Key berhasil diinisialisasi!")
+                                    else:
+                                        st.warning("API Key valid tapi gagal inisialisasi client")
                             time.sleep(1)
                             st.rerun()
                         else:
@@ -105,6 +108,10 @@ def render_login_page():
                     st.error("GROQ API Key wajib diisi")
                 elif signup_email and signup_password:
                     try:
+                        if not initialize_groq_client(signup_groq_api):
+                            st.error("GROQ API Key tidak valid atau tidak bisa digunakan")
+                            return
+                            
                         user = register_user(
                             st.session_state.db_manager,
                             signup_email,
@@ -149,67 +156,73 @@ def display_chat_history():
 
 def handle_query(query):
     try:
+        if not query or not isinstance(query, str):
+            st.error("Query tidak valid")
+            return False
+
         if not st.session_state.api_key:
             st.error("Silakan masukkan GROQ API key yang valid")
-            return
+            return False
 
-        # Initialize GROQ client with current API key
-        if not initialize_groq_client(st.session_state.api_key):
-            st.error("Gagal menginisialisasi GROQ client. Periksa API key Anda.")
-            return
+        if not set_api_key(st.session_state.api_key):
+            st.error("Gagal menginisialisasi GROQ client dengan API key yang diberikan")
+            return False
 
         st.session_state.conversation_history.append({"role": "user", "content": query})
 
-        if st.session_state.index is not None and len(st.session_state.documents) > 0:
-            with st.spinner("Mencari konteks yang relevan..."):
-                try:
+        final_prompt = query
+        if st.session_state.index is not None and st.session_state.documents:
+            try:
+                with st.spinner("Mencari konteks yang relevan..."):
                     model = load_embedding_model(st.session_state.selected_embedding_model)
                     query_embedding = generate_embedding(query, model)
                     relevant_doc_indices = search_index(st.session_state.index, query_embedding)
                     context = "\n".join([st.session_state.documents[i][:1000] for i in relevant_doc_indices])
-                    prompt = f"Berdasarkan konteks berikut:\n\n{context}\n\nJawab pertanyaan ini: {query}"
-                except Exception as e:
-                    st.warning(f"Gagal mencari konteks: {str(e)}. Menggunakan query langsung.")
-                    prompt = query
-        else:
-            prompt = query
+                    final_prompt = f"""Context: {context}
+
+Question: {query}
+
+Please provide a response using the context above when relevant. If the context doesn't help answer the question, provide a general response."""
+            except Exception as e:
+                st.warning(f"Gagal menggunakan konteks: {str(e)}. Menggunakan query langsung.")
+                final_prompt = query
 
         with st.spinner("Menghasilkan respons..."):
-            response = query_llm(prompt, st.session_state.selected_model)
-
-            if response:
-                if not isinstance(response, str):
-                    response = str(response)
-                
-                if not response.startswith("An error occurred"):
-                    st.session_state.conversation_history.append({"role": "assistant", "content": response})
-                    st.session_state.chat_history.append(("user", query))
-                    st.session_state.chat_history.append(("assistant", response))
-                    return True
-                else:
-                    st.error("Gagal mendapatkan respons dari model. Silakan coba lagi.")
-                    return False
-            else:
-                st.error("Tidak ada respons dari model. Silakan coba lagi.")
+            response = query_llm(final_prompt, st.session_state.selected_model)
+            
+            if not response:
+                st.error("Tidak ada respons dari model")
                 return False
 
+            if response.startswith("Error") or "error" in response.lower():
+                st.error(f"Gagal mendapatkan respons: {response}")
+                return False
+
+            st.session_state.conversation_history.append({"role": "assistant", "content": response})
+            st.session_state.chat_history.append(("user", query))
+            st.session_state.chat_history.append(("assistant", response))
+            
+            return True
+
     except Exception as e:
-        st.error(f"Terjadi kesalahan: {str(e)}")
+        st.error(f"Terjadi kesalahan dalam handle_query: {str(e)}")
+        st.session_state.error_log.append(str(e))
         return False
 
 def handle_main_area():
     st.title("Chatku AI")
     st.caption("Chatku AI dengan Retrieval Augmented Generation")
     
-    # Display chat history
     display_chat_history()
     
-    # Chat input
     with st.form(key="chat_form", clear_on_submit=True):
         query = st.text_input("Message", placeholder="Ketik pesan Anda di sini...", key="current_query")
-        if st.form_submit_button("Kirim"):
-            if query:
-                handle_query(query)
+        col1, col2 = st.columns([6,1])
+        with col2:
+            submit_button = st.form_submit_button("Kirim", use_container_width=True)
+        
+        if submit_button and query:
+            if handle_query(query):
                 st.rerun()
 
 def handle_sidebar():
@@ -256,6 +269,10 @@ def handle_sidebar():
                     st.info("API key tidak berubah")
                 else:
                     try:
+                        if not initialize_groq_client(new_api_key):
+                            st.error("API Key tidak valid atau tidak bisa digunakan")
+                            return
+                            
                         success = st.session_state.db_manager.save_api_key(
                             user_id=user["id"],
                             api_key=new_api_key
@@ -295,10 +312,8 @@ def handle_sidebar():
                 st.success("Model berhasil diperbarui!")
 
     with st.sidebar.expander("Document Processing"):
-        # File Upload
         uploaded_file = st.file_uploader("Upload File (PDF/Word)", type=['pdf', 'docx'])
         
-        # URL Input
         url = st.text_input(
             "URL Input",
             value="" if st.session_state.clear_url else st.session_state.get('url', ''),
@@ -324,7 +339,6 @@ def handle_sidebar():
         if st.button("Buat Index", use_container_width=True):
             create_search_index()
 
-        # Display processed items
         if st.session_state.processed_files or st.session_state.processed_urls:
             st.write("**Processed Items:**")
             if st.session_state.processed_files:
@@ -407,6 +421,7 @@ def clean_session_data():
             st.session_state.processed_files = []
             st.session_state.processed_urls = []
             st.session_state.clear_url = True
+            st.session_state.error_log = []
             
             st.success("Semua data berhasil dibersihkan!")
             st.rerun()
@@ -415,24 +430,18 @@ def clean_session_data():
         st.error(f"Gagal membersihkan data: {str(e)}")
 
 def main():
-    """
-    Fungsi utama untuk menjalankan aplikasi
-    """
     initialize_session_state()
 
-    # Cek autentikasi
     if 'token' not in st.session_state:
         render_login_page()
         return
 
-    # Verifikasi user session
     user = get_current_user()
     if not user:
         st.session_state.token = None
         st.rerun()
         return
 
-    # Render main application
     with st.sidebar:
         handle_sidebar()
     handle_main_area()
