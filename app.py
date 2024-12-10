@@ -2,6 +2,7 @@ import streamlit as st
 import time
 from datetime import datetime
 
+# Must be the first Streamlit command
 st.set_page_config(
     page_title="Chatku AI",
     page_icon="🤖",
@@ -21,6 +22,7 @@ from auth_utils import (
 )
 from dotenv import load_dotenv
 
+# Load environment variables
 load_dotenv()
 
 def initialize_session_state():
@@ -67,10 +69,7 @@ def render_login_page():
                             st.success("✅ Berhasil login!")
                             if result["user"].get("groq_api_key"):
                                 st.session_state.api_key = result["user"]["groq_api_key"]
-                                if set_api_key(result["user"]["groq_api_key"]):
-                                    st.success("✅ API key berhasil di-setup!")
-                                else:
-                                    st.warning("⚠️ API key tersimpan tapi gagal setup")
+                                set_api_key(result["user"]["groq_api_key"])
                             time.sleep(1)
                             st.rerun()
                         else:
@@ -106,10 +105,6 @@ def render_login_page():
                     st.error("GROQ API Key wajib diisi")
                 elif signup_email and signup_password:
                     try:
-                        if not set_api_key(signup_groq_api):
-                            st.error("API Key tidak valid, silakan periksa kembali")
-                            return
-                            
                         user = register_user(
                             st.session_state.db_manager,
                             signup_email,
@@ -152,50 +147,6 @@ def display_chat_history():
                     st.caption(message_time)
         st.write("---")
 
-def handle_query(query):
-    try:
-        st.session_state.conversation_history.append({"role": "user", "content": query})
-
-        # Prepare prompt with context if available
-        final_prompt = query
-        if st.session_state.index is not None and len(st.session_state.documents) > 0:
-            try:
-                with st.spinner("Mencari konteks yang relevan..."):
-                    model = load_embedding_model(st.session_state.selected_embedding_model)
-                    query_embedding = generate_embedding(query, model)
-                    relevant_doc_indices = search_index(st.session_state.index, query_embedding)
-                    context = "\n".join([st.session_state.documents[i][:1000] for i in relevant_doc_indices])
-                    final_prompt = f"Konteks: {context}\n\nPertanyaan: {query}\n\nBerikan jawaban berdasarkan konteks di atas jika relevan."
-            except Exception as e:
-                st.warning(f"Gagal menggunakan konteks: {str(e)}. Menggunakan query langsung.")
-                final_prompt = query
-
-        # Get response from model
-        with st.spinner("Menghasilkan respons..."):
-            response = query_llm(final_prompt, st.session_state.selected_model)
-
-        # Handle response
-        if response:
-            if response.startswith("Silakan masukkan GROQ API key"):
-                st.info(response)
-                return False
-                
-            if response.startswith("Terjadi kesalahan"):
-                st.error(response)
-                return False
-
-            st.session_state.conversation_history.append({"role": "assistant", "content": response})
-            st.session_state.chat_history.append(("user", query))
-            st.session_state.chat_history.append(("assistant", response))
-            return True
-
-        st.error("Tidak ada respons dari model")
-        return False
-
-    except Exception as e:
-        st.error(f"Terjadi kesalahan: {str(e)}")
-        return False
-
 def handle_main_area():
     st.title("Chatku AI")
     st.caption("Chatku AI dengan Retrieval Augmented Generation")
@@ -206,14 +157,10 @@ def handle_main_area():
     # Chat input
     with st.form(key="chat_form", clear_on_submit=True):
         query = st.text_input("Message", placeholder="Ketik pesan Anda di sini...", key="current_query")
-        col1, col2 = st.columns([6,1])
-        with col2:
-            submit_button = st.form_submit_button("Kirim", use_container_width=True)
-        
-        if submit_button and query:
-            success = handle_query(query)
-            if success:
-                st.experimental_rerun()
+        if st.form_submit_button("Kirim"):
+            if query:
+                handle_query(query)
+                st.rerun()
 
 def handle_sidebar():
     user = get_current_user()
@@ -227,6 +174,7 @@ def handle_sidebar():
     with st.sidebar.expander("API Settings"):
         current_api_key = st.session_state.get('api_key', '')
         
+        # Tambahkan informasi tentang GROQ API Key
         st.markdown("""
             ### Cara Mendapatkan GROQ API Key
             1. Kunjungi [console.groq.com](https://console.groq.com/)
@@ -340,7 +288,8 @@ def handle_sidebar():
         st.write("---")
         if st.button("Hapus Semua Data", use_container_width=True):
             clean_session_data()
-        st.sidebar.write("---")
+
+    st.sidebar.write("---")
     if st.sidebar.button("Logout", use_container_width=True):
         logout_user()
         st.rerun()
@@ -365,6 +314,38 @@ def process_url(url):
             st.success(f"URL '{url}' berhasil diproses!")
     except Exception as e:
         st.error(f"Gagal memproses URL: {str(e)}")
+
+def handle_query(query):
+    try:
+        if not st.session_state.api_key:
+            st.error("Silakan masukkan GROQ API key yang valid")
+            return
+
+        st.session_state.conversation_history.append({"role": "user", "content": query})
+
+        if st.session_state.index is not None:
+            with st.spinner("Mencari konteks yang relevan..."):
+                model = load_embedding_model(st.session_state.selected_embedding_model)
+                query_embedding = generate_embedding(query, model)
+                relevant_doc_indices = search_index(st.session_state.index, query_embedding)
+                context = "\n".join([st.session_state.documents[i][:1000] for i in relevant_doc_indices])
+                prompt = f"Berdasarkan konteks berikut:\n\n{context}\n\nJawab pertanyaan ini: {query}"
+        else:
+            prompt = query
+
+        set_api_key(st.session_state.api_key)
+        with st.spinner("Menghasilkan respons..."):
+            response = query_llm(prompt, st.session_state.selected_model)
+
+        if response and not response.startswith("An error occurred"):
+            st.session_state.conversation_history.append({"role": "assistant", "content": response})
+            st.session_state.chat_history.append(("user", query))
+            st.session_state.chat_history.append(("assistant", response))
+        else:
+            st.error("Gagal mendapatkan respons. Silakan cek API key Anda dan coba lagi.")
+
+    except Exception as e:
+        st.error(f"Terjadi kesalahan: {str(e)}")
 
 def generate_embeddings():
     if not st.session_state.documents:
@@ -399,8 +380,12 @@ def create_search_index():
         st.error(f"Gagal membuat index: {str(e)}")
 
 def clean_session_data():
+    """
+    Membersihkan semua data dari session state dan mengembalikan aplikasi ke keadaan awal
+    """
     try:
         with st.spinner("Membersihkan data..."):
+            # Reset semua nilai ke default
             st.session_state.documents = []
             st.session_state.embeddings = []
             st.session_state.chat_history = []
@@ -410,25 +395,34 @@ def clean_session_data():
             st.session_state.processed_urls = []
             st.session_state.clear_url = True
             
+            # Tampilkan pesan sukses
             st.success("Semua data berhasil dibersihkan!")
+            
+            # Refresh tampilan
             st.rerun()
             
     except Exception as e:
         st.error(f"Gagal membersihkan data: {str(e)}")
 
 def main():
+    """
+    Fungsi utama untuk menjalankan aplikasi
+    """
     initialize_session_state()
 
+    # Cek autentikasi
     if 'token' not in st.session_state:
         render_login_page()
         return
 
+    # Verifikasi user session
     user = get_current_user()
     if not user:
         st.session_state.token = None
         st.rerun()
         return
 
+    # Render main application
     with st.sidebar:
         handle_sidebar()
     handle_main_area()
