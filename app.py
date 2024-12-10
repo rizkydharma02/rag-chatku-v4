@@ -1,4 +1,3 @@
-# app.py
 import streamlit as st
 import time
 from datetime import datetime
@@ -27,31 +26,30 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def initialize_session_state():
-    """Initialize session state variables"""
     if 'db_manager' not in st.session_state:
         st.session_state.db_manager = DatabaseManager()
     
-    # Define all session state variables
-    session_vars = {
-        'messages': [],
+    default_values = {
         'documents': [],
         'embeddings': [],
+        'chat_history': [],
+        'conversation_history': [],
         'index': None,
         'processed_files': [],
         'processed_urls': [],
         'clear_url': False,
         'selected_model': get_available_models()[0],
         'selected_embedding_model': "all-MiniLM-L6-v2",
-        'api_key': ""
+        'api_key': "",
+        'current_query': "",
+        'last_timestamp': None
     }
     
-    # Initialize any missing session state variables
-    for var, default_value in session_vars.items():
-        if var not in st.session_state:
-            st.session_state[var] = default_value
+    for key, default_value in default_values.items():
+        if key not in st.session_state:
+            st.session_state[key] = default_value
 
 def render_login_page():
-    """Render the login page"""
     st.title("🤖 Chatku AI")
     st.caption("Chatku AI Dengan Retrieval Augmented Generation")
     
@@ -124,112 +122,47 @@ def render_login_page():
                 else:
                     st.warning("Silakan lengkapi semua field")
 
-def handle_query(prompt: str) -> None:
-    """Handle user query and generate response"""
-    try:
-        if not st.session_state.api_key:
-            st.error("Please enter your GROQ API key first.")
-            return
+def get_timestamp():
+    if not st.session_state.last_timestamp or \
+       (datetime.now() - st.session_state.last_timestamp).seconds > 60:
+        st.session_state.last_timestamp = datetime.now()
+        return st.session_state.last_timestamp.strftime("%H:%M")
+    return None
 
-        # Add user message
-        st.session_state.messages.append({"role": "user", "content": prompt})
+def display_chat_history():
+    for role, message in st.session_state.chat_history:
+        message_time = get_timestamp()
+        
+        if role == "user":
+            message_container = st.container()
+            with message_container:
+                st.write(f"**You**: {message}")
+                if message_time:
+                    st.caption(f"{message_time} ✓✓")
+        else:
+            message_container = st.container()
+            with message_container:
+                st.write(f"**🤖 Assistant**: {message}")
+                if message_time:
+                    st.caption(message_time)
+        st.write("---")
 
-        # Generate response
-        with st.spinner("Generating response..."):
-            # Get the response from LLM
-            response = query_llm(prompt, st.session_state.selected_model)
-            
-            if not response.startswith("Error"):
-                # Add assistant response
-                st.session_state.messages.append({
-                    "role": "assistant", 
-                    "content": response
-                })
-                st.rerun()
-            else:
-                st.error(response)
-                
-    except Exception as e:
-        st.error(f"Error: {str(e)}")
-
-def chat_interface():
-    """Render chat interface"""
-    st.title("🤖 Chatku AI")
+def handle_main_area():
+    st.title("Chatku AI")
     st.caption("Chatku AI dengan Retrieval Augmented Generation")
     
-    # Display messages
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.write(message["content"])
+    # Display chat history
+    display_chat_history()
     
     # Chat input
-    if prompt := st.chat_input("Ketik pesan Anda di sini..."):
-        handle_query(prompt)
-
-def process_file(uploaded_file):
-    """Process uploaded file"""
-    try:
-        with st.spinner("Memproses file..."):
-            file_path = save_uploaded_file(uploaded_file)
-            content = read_file(file_path)
-            st.session_state.documents.append(content)
-            st.session_state.processed_files.append(uploaded_file.name)
-            st.success(f"File '{uploaded_file.name}' berhasil diproses!")
-            # Clean up temporary file
-            try:
-                os.remove(file_path)
-            except:
-                pass
-    except Exception as e:
-        st.error(f"Gagal memproses file: {str(e)}")
-
-def process_url(url):
-    """Process URL content"""
-    try:
-        with st.spinner("Memproses URL..."):
-            content = read_url(url)
-            st.session_state.documents.append(content)
-            st.session_state.processed_urls.append(url)
-            st.success(f"URL '{url}' berhasil diproses!")
-    except Exception as e:
-        st.error(f"Gagal memproses URL: {str(e)}")
-
-def generate_embeddings():
-    """Generate embeddings for documents"""
-    if not st.session_state.documents:
-        st.warning("Tidak ada dokumen yang perlu diproses")
-        return
-        
-    try:
-        with st.spinner("Menghasilkan embeddings..."):
-            model = load_embedding_model(st.session_state.selected_embedding_model)
-            st.session_state.embeddings = []
-            
-            progress_bar = st.progress(0)
-            for i, doc in enumerate(st.session_state.documents):
-                embedding = generate_embedding(doc, model)
-                st.session_state.embeddings.append(embedding)
-                progress_bar.progress((i + 1) / len(st.session_state.documents))
-                
-            st.success(f"Berhasil menghasilkan embeddings untuk {len(st.session_state.embeddings)} dokumen")
-    except Exception as e:
-        st.error(f"Gagal menghasilkan embeddings: {str(e)}")
-
-def create_search_index():
-    """Create search index from embeddings"""
-    if not st.session_state.embeddings:
-        st.warning("Harap generate embeddings terlebih dahulu")
-        return
-        
-    try:
-        with st.spinner("Membuat index pencarian..."):
-            st.session_state.index = create_index(st.session_state.embeddings)
-            st.success("Index pencarian berhasil dibuat!")
-    except Exception as e:
-        st.error(f"Gagal membuat index: {str(e)}")
+    with st.form(key="chat_form", clear_on_submit=True):
+        query = st.text_input("Message", placeholder="Ketik pesan Anda di sini...", key="current_query")
+        if st.form_submit_button("Kirim"):
+            if query:
+                handle_query(query)
+                st.rerun()
 
 def handle_sidebar():
-    """Handle sidebar components"""
     user = get_current_user()
     if not user:
         st.error("User not authenticated")
@@ -238,9 +171,10 @@ def handle_sidebar():
     st.sidebar.write(f"👤 **{user['email']}**")
     st.sidebar.write("---")
     
-    with st.sidebar.expander("API Settings", expanded=True):
+    with st.sidebar.expander("API Settings"):
         current_api_key = st.session_state.get('api_key', '')
         
+        # Tambahkan informasi tentang GROQ API Key
         st.markdown("""
             ### Cara Mendapatkan GROQ API Key
             1. Kunjungi [console.groq.com](https://console.groq.com/)
@@ -253,15 +187,14 @@ def handle_sidebar():
         """)
         
         if current_api_key:
-            masked_key = f"gsk_...{current_api_key[-4:]}" if current_api_key.startswith('gsk_') else "Invalid API Key Format"
-            st.success(f"API Key aktif: {masked_key}")
+            st.success("API Key sudah terpasang")
         else:
             st.warning("API Key belum diatur")
             
         with st.form("api_key_form"):
             new_api_key = st.text_input(
                 "GROQ API Key",
-                value="",
+                value=current_api_key,
                 type="password",
                 placeholder="Masukkan GROQ API Key Anda",
                 help="Dapatkan API key dari https://console.groq.com/"
@@ -270,26 +203,23 @@ def handle_sidebar():
             if st.form_submit_button("Simpan API Key"):
                 if not new_api_key:
                     st.error("API key tidak boleh kosong")
-                elif not new_api_key.startswith('gsk_'):
-                    st.error("Invalid API key format. GROQ API key harus dimulai dengan 'gsk_'")
+                elif new_api_key == current_api_key:
+                    st.info("API key tidak berubah")
                 else:
                     try:
-                        if validate_groq_api_key(new_api_key):
-                            success = st.session_state.db_manager.save_api_key(
-                                user_id=user["id"],
-                                api_key=new_api_key
-                            )
-                            
-                            if success:
-                                st.session_state.api_key = new_api_key
-                                set_api_key(new_api_key)
-                                st.success("API key berhasil disimpan!")
-                                time.sleep(1)
-                                st.rerun()
-                            else:
-                                st.error("Gagal menyimpan API key")
+                        success = st.session_state.db_manager.save_api_key(
+                            user_id=user["id"],
+                            api_key=new_api_key
+                        )
+                        
+                        if success:
+                            st.session_state.api_key = new_api_key
+                            set_api_key(new_api_key)
+                            st.success("API key berhasil disimpan!")
+                            time.sleep(1)
+                            st.rerun()
                         else:
-                            st.error("Invalid API key format")
+                            st.error("Gagal menyimpan API key")
                     except Exception as e:
                         st.error(f"Terjadi kesalahan: {str(e)}")
 
@@ -348,10 +278,12 @@ def handle_sidebar():
         # Display processed items
         if st.session_state.processed_files or st.session_state.processed_urls:
             st.write("**Processed Items:**")
-            for file in st.session_state.processed_files:
-                st.write(f"📄 {file}")
-            for url in st.session_state.processed_urls:
-                st.write(f"🔗 {url}")
+            if st.session_state.processed_files:
+                for file in st.session_state.processed_files:
+                    st.write(f"📄 {file}")
+            if st.session_state.processed_urls:
+                for url in st.session_state.processed_urls:
+                    st.write(f"🔗 {url}")
 
         st.write("---")
         if st.button("Hapus Semua Data", use_container_width=True):
@@ -362,40 +294,128 @@ def handle_sidebar():
         logout_user()
         st.rerun()
 
+def process_file(uploaded_file):
+    try:
+        with st.spinner("Memproses file..."):
+            file_path = save_uploaded_file(uploaded_file)
+            content = read_file(file_path)
+            st.session_state.documents.append(content)
+            st.session_state.processed_files.append(uploaded_file.name)
+            st.success(f"File '{uploaded_file.name}' berhasil diproses!")
+    except Exception as e:
+        st.error(f"Gagal memproses file: {str(e)}")
+
+def process_url(url):
+    try:
+        with st.spinner("Memproses URL..."):
+            content = read_url(url)
+            st.session_state.documents.append(content)
+            st.session_state.processed_urls.append(url)
+            st.success(f"URL '{url}' berhasil diproses!")
+    except Exception as e:
+        st.error(f"Gagal memproses URL: {str(e)}")
+
+def handle_query(query):
+    try:
+        if not st.session_state.api_key:
+            st.error("Silakan masukkan GROQ API key yang valid")
+            return
+
+        st.session_state.conversation_history.append({"role": "user", "content": query})
+
+        if st.session_state.index is not None:
+            with st.spinner("Mencari konteks yang relevan..."):
+                model = load_embedding_model(st.session_state.selected_embedding_model)
+                query_embedding = generate_embedding(query, model)
+                relevant_doc_indices = search_index(st.session_state.index, query_embedding)
+                context = "\n".join([st.session_state.documents[i][:1000] for i in relevant_doc_indices])
+                prompt = f"Berdasarkan konteks berikut:\n\n{context}\n\nJawab pertanyaan ini: {query}"
+        else:
+            prompt = query
+
+        set_api_key(st.session_state.api_key)
+        with st.spinner("Menghasilkan respons..."):
+            response = query_llm(prompt, st.session_state.selected_model)
+
+        if response and not response.startswith("An error occurred"):
+            st.session_state.conversation_history.append({"role": "assistant", "content": response})
+            st.session_state.chat_history.append(("user", query))
+            st.session_state.chat_history.append(("assistant", response))
+        else:
+            st.error("Gagal mendapatkan respons. Silakan cek API key Anda dan coba lagi.")
+
+    except Exception as e:
+        st.error(f"Terjadi kesalahan: {str(e)}")
+
+def generate_embeddings():
+    if not st.session_state.documents:
+        st.warning("Tidak ada dokumen yang perlu diproses")
+        return
+        
+    try:
+        with st.spinner("Menghasilkan embeddings..."):
+            model = load_embedding_model(st.session_state.selected_embedding_model)
+            st.session_state.embeddings = []
+            
+            progress_bar = st.progress(0)
+            for i, doc in enumerate(st.session_state.documents):
+                embedding = generate_embedding(doc, model)
+                st.session_state.embeddings.append(embedding)
+                progress_bar.progress((i + 1) / len(st.session_state.documents))
+                
+            st.success(f"Berhasil menghasilkan embeddings untuk {len(st.session_state.embeddings)} dokumen")
+    except Exception as e:
+        st.error(f"Gagal menghasilkan embeddings: {str(e)}")
+
+def create_search_index():
+    if not st.session_state.embeddings:
+        st.warning("Harap generate embeddings terlebih dahulu")
+        return
+        
+    try:
+        with st.spinner("Membuat index pencarian..."):
+            st.session_state.index = create_index(st.session_state.embeddings)
+            st.success("Index pencarian berhasil dibuat!")
+    except Exception as e:
+        st.error(f"Gagal membuat index: {str(e)}")
+
 def clean_session_data():
-    """Clean all session data"""
+    """
+    Membersihkan semua data dari session state dan mengembalikan aplikasi ke keadaan awal
+    """
     try:
         with st.spinner("Membersihkan data..."):
-            session_vars = {
-                'messages': [],
-                'documents': [],
-                'embeddings': [],
-                'index': None,
-                'processed_files': [],
-                'processed_urls': [],
-                'clear_url': True
-            }
+            # Reset semua nilai ke default
+            st.session_state.documents = []
+            st.session_state.embeddings = []
+            st.session_state.chat_history = []
+            st.session_state.conversation_history = []
+            st.session_state.index = None
+            st.session_state.processed_files = []
+            st.session_state.processed_urls = []
+            st.session_state.clear_url = True
             
-            for key, value in session_vars.items():
-                if key in st.session_state:
-                    st.session_state[key] = value
-            
+            # Tampilkan pesan sukses
             st.success("Semua data berhasil dibersihkan!")
+            
+            # Refresh tampilan
             st.rerun()
             
     except Exception as e:
         st.error(f"Gagal membersihkan data: {str(e)}")
 
 def main():
-    """Main application entry point"""
+    """
+    Fungsi utama untuk menjalankan aplikasi
+    """
     initialize_session_state()
 
-    # Check authentication
+    # Cek autentikasi
     if 'token' not in st.session_state:
         render_login_page()
         return
 
-    # Verify user session
+    # Verifikasi user session
     user = get_current_user()
     if not user:
         st.session_state.token = None
@@ -403,13 +423,9 @@ def main():
         return
 
     # Render main application
-    col1, col2 = st.columns([1, 3])
-    
-    with col1:
+    with st.sidebar:
         handle_sidebar()
-    
-    with col2:
-        chat_interface()
+    handle_main_area()
 
 if __name__ == "__main__":
     main()
