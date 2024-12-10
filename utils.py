@@ -10,6 +10,7 @@ import numpy as np
 import streamlit as st
 import tempfile
 import logging
+import json
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -17,19 +18,91 @@ logger = logging.getLogger(__name__)
 
 groq_client = None
 
+def initialize_groq_client(api_key):
+    global groq_client
+    try:
+        if api_key and validate_api_key_format(api_key):
+            groq_client = Groq(api_key=api_key)
+            # Test the client with a simple request
+            test_response = groq_client.chat.completions.create(
+                model="mixtral-8x7b-32768",
+                messages=[{"role": "user", "content": "test"}],
+                temperature=0.5,
+                max_tokens=10
+            )
+            logger.info("GROQ client initialized successfully")
+            return bool(test_response)
+        logger.error("Invalid API key format")
+        return False
+    except Exception as e:
+        logger.error(f"Error initializing GROQ client: {str(e)}")
+        return False
+
 @st.cache_resource
 def load_embedding_model(model_name):
     return SentenceTransformer(model_name)
 
-def set_api_key(api_key):
+def query_llm(prompt, model_name):
+    """
+    Fungsi untuk mengirim query ke model LLM dan mendapatkan respons
+    """
     global groq_client
-    if api_key:
-        try:
+    try:
+        if not groq_client:
+            raise ValueError("GROQ client belum diinisialisasi. Pastikan API key valid.")
+
+        logger.info(f"Sending request with model: {model_name}")
+        logger.info(f"Prompt: {prompt[:100]}...")  # Print first 100 chars of prompt
+
+        messages = [
+            {
+                "role": "system",
+                "content": "Anda adalah asisten AI yang membantu dengan memberikan informasi yang akurat dan jelas."
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+
+        response = groq_client.chat.completions.create(
+            model=model_name,
+            messages=messages,
+            temperature=0.7,
+            max_tokens=2048,
+            top_p=1,
+            stream=False
+        )
+
+        logger.info("Response received from API")
+        
+        if response and hasattr(response.choices[0].message, 'content'):
+            result = response.choices[0].message.content
+            logger.info(f"Response content: {result[:100]}...")  # Print first 100 chars
+            return result
+        else:
+            logger.error("No valid response content found")
+            return "Maaf, tidak bisa mendapatkan respons yang valid dari model."
+
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Error in query_llm: {error_msg}")
+        return f"Terjadi kesalahan: {error_msg}"
+
+def set_api_key(api_key):
+    """
+    Fungsi untuk mengatur API key dan menginisialisasi GROQ client
+    """
+    global groq_client
+    try:
+        if api_key:
             groq_client = Groq(api_key=api_key)
-        except Exception as e:
-            print(f"Error setting API key: {str(e)}")
-    else:
-        groq_client = None
+            logger.info("GROQ client initialized in set_api_key")
+            return True
+        return False
+    except Exception as e:
+        logger.error(f"Error setting API key: {str(e)}")
+        return False
 
 def get_available_models():
     return ["mixtral-8x7b-32768", "gemma-7b-it", "llama2-70b-4096"]
@@ -73,31 +146,6 @@ def generate_embedding(text, model):
         return model.encode(text)
     except Exception as e:
         raise Exception(f"Error generating embedding: {str(e)}")
-
-def query_llm(prompt, model_name):
-    try:
-        if not groq_client:
-            raise ValueError("Please enter a valid API key first.")
-
-        completion = groq_client.chat.completions.create(
-            model=model_name,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.5,
-            max_tokens=1000,
-            stream=False
-        )
-        
-        if hasattr(completion.choices[0].message, 'content'):
-            return completion.choices[0].message.content
-        else:
-            return "Tidak ada respons dari model. Silakan coba lagi."
-            
-    except Exception as e:
-        logger.error(f"Error in query_llm: {str(e)}")
-        return f"Terjadi kesalahan: {str(e)}"
 
 def save_uploaded_file(uploaded_file):
     try:
