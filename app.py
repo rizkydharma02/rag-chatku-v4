@@ -26,14 +26,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def initialize_session_state():
+    """Initialize session state variables"""
     if 'db_manager' not in st.session_state:
         st.session_state.db_manager = DatabaseManager()
     
-    default_values = {
+    # Define all session state variables
+    session_vars = {
+        'messages': [],  # For storing chat messages
         'documents': [],
         'embeddings': [],
-        'chat_history': [],
-        'conversation_history': [],
         'index': None,
         'processed_files': [],
         'processed_urls': [],
@@ -41,15 +42,15 @@ def initialize_session_state():
         'selected_model': get_available_models()[0],
         'selected_embedding_model': "all-MiniLM-L6-v2",
         'api_key': "",
-        'current_query': "",
-        'last_timestamp': None,
-        'chat_initialized': False,  # Added flag for chat initialization
-        'response_placeholder': None  # Added placeholder for response
+        'thinking': False,  # Flag to track response generation
+        'last_response': None,  # Store last response
+        'user_input_key': 0  # Key for user input widget
     }
     
-    for key, default_value in default_values.items():
-        if key not in st.session_state:
-            st.session_state[key] = default_value
+    # Initialize any missing session state variables
+    for var, default_value in session_vars.items():
+        if var not in st.session_state:
+            st.session_state[var] = default_value
 
 def render_login_page():
     st.title("🤖 Chatku AI")
@@ -124,100 +125,68 @@ def render_login_page():
                 else:
                     st.warning("Silakan lengkapi semua field")
 
-def get_timestamp():
-    if not st.session_state.last_timestamp or \
-       (datetime.now() - st.session_state.last_timestamp).seconds > 60:
-        st.session_state.last_timestamp = datetime.now()
-        return st.session_state.last_timestamp.strftime("%H:%M")
-    return None
-
-def display_chat_message(role, message, message_time=None):
-    message_container = st.container()
-    with message_container:
-        if role == "user":
-            st.write(f"**You**: {message}")
-            if message_time:
-                st.caption(f"{message_time} ✓✓")
-        else:
-            st.write(f"**🤖 Assistant**: {message}")
-            if message_time:
-                st.caption(message_time)
-        st.write("---")
-
-def display_chat_history():
-    chat_container = st.container()
-    with chat_container:
-        for role, message in st.session_state.chat_history:
-            message_time = get_timestamp()
-            display_chat_message(role, message, message_time)
-
-def handle_query(query):
+def handle_query(prompt: str) -> None:
+    """Handle user query and generate response"""
     try:
         if not st.session_state.api_key:
-            st.error("Silakan masukkan GROQ API key yang valid")
-            return False
+            st.error("Please enter your GROQ API key first.")
+            return
 
-        # Tambahkan query ke chat history
-        st.session_state.chat_history.append(("user", query))
+        # Add user message
+        st.session_state.messages.append({"role": "user", "content": prompt})
         
-        # Prepare response placeholder
-        if 'response_placeholder' not in st.session_state:
-            st.session_state.response_placeholder = st.empty()
-
-        # Process query
-        if st.session_state.index is not None:
-            with st.spinner("Mencari konteks yang relevan..."):
+        # Set API key
+        set_api_key(st.session_state.api_key)
+        
+        # Generate response
+        with st.spinner("Generating response..."):
+            # Prepare context if index exists
+            if st.session_state.index is not None:
                 model = load_embedding_model(st.session_state.selected_embedding_model)
-                query_embedding = generate_embedding(query, model)
+                query_embedding = generate_embedding(prompt, model)
                 relevant_doc_indices = search_index(st.session_state.index, query_embedding)
                 context = "\n".join([st.session_state.documents[i][:1000] for i in relevant_doc_indices])
-                prompt = f"Berdasarkan konteks berikut:\n\n{context}\n\nJawab pertanyaan ini: {query}"
-        else:
-            prompt = query
+                full_prompt = f"Berdasarkan konteks berikut:\n\n{context}\n\nJawab pertanyaan ini: {prompt}"
+            else:
+                full_prompt = prompt
 
-        # Get response
-        set_api_key(st.session_state.api_key)
-        with st.spinner("Menghasilkan respons..."):
-            response = query_llm(prompt, st.session_state.selected_model)
-
-        if response and not response.startswith("An error occurred"):
-            # Update histories
-            st.session_state.chat_history.append(("assistant", response))
-            st.session_state.conversation_history.extend([
-                {"role": "user", "content": query},
-                {"role": "assistant", "content": response}
-            ])
-            return True
-        else:
-            st.error("Gagal mendapatkan respons. Silakan cek API key Anda dan coba lagi.")
-            return False
-
+            response = query_llm(full_prompt, st.session_state.selected_model)
+            
+            if response and not response.startswith("An error occurred"):
+                # Add assistant response
+                st.session_state.messages.append({"role": "assistant", "content": response})
+                st.session_state.last_response = response
+            else:
+                st.error("Failed to get response. Please check your API key and try again.")
+                
     except Exception as e:
-        st.error(f"Terjadi kesalahan: {str(e)}")
-        return False
+        st.error(f"Error: {str(e)}")
+    finally:
+        # Increment user input key to reset the input field
+        st.session_state.user_input_key += 1
 
-def handle_main_area():
-    st.title("Chatku AI")
+def chat_interface():
+    """Render the chat interface"""
+    st.title("🤖 Chatku AI")
     st.caption("Chatku AI dengan Retrieval Augmented Generation")
     
-    # Create main containers
-    chat_display = st.container()
-    input_container = st.container()
+    # Chat messages container
+    chat_container = st.container()
     
-    # Display chat history in the first container
-    with chat_display:
-        display_chat_history()
+    # Display messages
+    with chat_container:
+        for message in st.session_state.messages:
+            is_user = message["role"] == "user"
+            with st.chat_message(message["role"], avatar="🧑" if is_user else "🤖"):
+                st.write(message["content"])
     
-    # Input form in the second container
-    with input_container:
-        with st.form(key="chat_form", clear_on_submit=True):
-            query = st.text_input("Message", placeholder="Ketik pesan Anda di sini...", key="current_query")
-            submit_button = st.form_submit_button("Kirim")
-            
-            if submit_button and query:
-                success = handle_query(query)
-                if success:
-                    st.rerun()
+    # Chat input at the bottom
+    user_input = st.chat_input("Ketik pesan Anda di sini...", key=f"chat_input_{st.session_state.user_input_key}")
+    
+    if user_input and not st.session_state.thinking:
+        st.session_state.thinking = True
+        handle_query(user_input)
+        st.session_state.thinking = False
 
 def handle_sidebar():
     user = get_current_user()
@@ -334,12 +303,10 @@ def handle_sidebar():
         # Display processed items
         if st.session_state.processed_files or st.session_state.processed_urls:
             st.write("**Processed Items:**")
-            if st.session_state.processed_files:
-                for file in st.session_state.processed_files:
-                    st.write(f"📄 {file}")
-            if st.session_state.processed_urls:
-                for url in st.session_state.processed_urls:
-                    st.write(f"🔗 {url}")
+            for file in st.session_state.processed_files:
+                st.write(f"📄 {file}")
+            for url in st.session_state.processed_urls:
+                st.write(f"🔗 {url}")
 
         st.write("---")
         if st.button("Hapus Semua Data", use_container_width=True):
@@ -409,37 +376,45 @@ def clean_session_data():
     """
     try:
         with st.spinner("Membersihkan data..."):
-            # Reset semua nilai ke default
-            st.session_state.documents = []
-            st.session_state.embeddings = []
-            st.session_state.chat_history = []
-            st.session_state.conversation_history = []
-            st.session_state.index = None
-            st.session_state.processed_files = []
-            st.session_state.processed_urls = []
-            st.session_state.clear_url = True
+            # Reset session variables
+            session_vars = {
+                'messages': [],
+                'documents': [],
+                'embeddings': [],
+                'index': None,
+                'processed_files': [],
+                'processed_urls': [],
+                'clear_url': True,
+                'thinking': False,
+                'last_response': None,
+                'user_input_key': 0
+            }
             
-            # Tampilkan pesan sukses
+            for key, value in session_vars.items():
+                if key in st.session_state:
+                    st.session_state[key] = value
+            
             st.success("Semua data berhasil dibersihkan!")
-            
-            # Refresh tampilan
             st.rerun()
             
     except Exception as e:
         st.error(f"Gagal membersihkan data: {str(e)}")
 
+def handle_main_area():
+    """Main chat area handler"""
+    # Display the chat interface
+    chat_interface()
+
 def main():
-    """
-    Fungsi utama untuk menjalankan aplikasi
-    """
+    """Main application entry point"""
     initialize_session_state()
 
-    # Cek autentikasi
+    # Check authentication
     if 'token' not in st.session_state:
         render_login_page()
         return
 
-    # Verifikasi user session
+    # Verify user session
     user = get_current_user()
     if not user:
         st.session_state.token = None
@@ -447,9 +422,13 @@ def main():
         return
 
     # Render main application
-    with st.sidebar:
+    col1, col2 = st.columns([1, 3])
+    
+    with col1:
         handle_sidebar()
-    handle_main_area()
+    
+    with col2:
+        handle_main_area()
 
 if __name__ == "__main__":
     main()
