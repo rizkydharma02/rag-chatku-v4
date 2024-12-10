@@ -5,7 +5,7 @@ import docx
 import requests
 from bs4 import BeautifulSoup
 from sentence_transformers import SentenceTransformer
-from groq.client import Groq
+from groq import Groq
 import faiss
 import numpy as np
 import streamlit as st
