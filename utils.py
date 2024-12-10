@@ -11,15 +11,13 @@ import numpy as np
 import streamlit as st
 import tempfile
 import logging
-import json
-from typing import Optional, List, Dict, Any
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 @st.cache_resource
-def load_embedding_model(model_name: str):
+def load_embedding_model(model_name):
     """Load and cache the embedding model"""
     try:
         return SentenceTransformer(model_name)
@@ -44,51 +42,50 @@ def set_api_key(api_key: str) -> bool:
         logger.error(f"Error setting API key: {str(e)}")
         return False
 
-def get_available_models() -> List[str]:
+def get_available_models() -> list:
     """Get list of available LLM models"""
     return ["mixtral-8x7b-32768", "gemma-7b-it", "llama2-70b-chat"]
 
 def query_llm(prompt: str, model_name: str) -> str:
-    """Query GROQ LLM with enhanced error handling"""
+    """Query GROQ LLM with proper error handling"""
     try:
         api_key = os.getenv("GROQ_API_KEY")
         if not api_key:
-            logger.error("API key not found in environment variables")
             return "Error: API key not found. Please set your GROQ API key."
 
-        # Initialize Groq client for each query
-        client = Groq(api_key=api_key)
-        
-        # Prepare messages
-        messages = [
-            {"role": "system", "content": "You are a helpful AI assistant. Provide clear and concise responses."},
-            {"role": "user", "content": prompt}
-        ]
-
-        # Make API call with error handling
+        # Initialize Groq client without proxies
         try:
+            client = Groq(api_key=api_key)
             completion = client.chat.completions.create(
                 model=model_name,
-                messages=messages,
+                messages=[
+                    {"role": "system", "content": "You are a helpful AI assistant."},
+                    {"role": "user", "content": prompt}
+                ],
                 temperature=0.7,
                 max_tokens=2048,
                 top_p=1,
                 stream=False
             )
             
-            if hasattr(completion.choices[0], 'message') and completion.choices[0].message:
+            if completion.choices and completion.choices[0].message:
                 return completion.choices[0].message.content
             else:
-                logger.error("No valid response content from model")
-                return "Error: Unable to get response from model"
+                return "Error: No response from model"
                 
         except Exception as e:
-            logger.error(f"GROQ API Error: {str(e)}")
-            return f"Error communicating with GROQ API: {str(e)}"
+            if "got an unexpected keyword argument 'proxies'" in str(e):
+                # Jika error terkait proxies, coba instalasi ulang groq
+                os.system("pip install --upgrade groq")
+                return "Please try again. System is updating..."
+            else:
+                return f"Error: {str(e)}"
 
     except Exception as e:
-        logger.error(f"General Error in query_llm: {str(e)}")
-        return f"Error in query processing: {str(e)}"
+        logger.error(f"Error in query_llm: {str(e)}")
+        return f"Error: {str(e)}"
+
+# [Bagian kode lainnya tetap sama]
 
 def read_pdf(file_path: str) -> str:
     """Read content from PDF file"""
