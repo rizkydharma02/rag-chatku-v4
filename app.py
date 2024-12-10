@@ -1,6 +1,11 @@
 import streamlit as st
 import time
 from datetime import datetime
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Must be the first Streamlit command
 st.set_page_config(
@@ -27,168 +32,128 @@ load_dotenv()
 
 def initialize_session_state():
     """Initialize session state variables"""
-    if 'db_manager' not in st.session_state:
-        st.session_state.db_manager = DatabaseManager()
-    
-    # Define all session state variables
-    session_vars = {
-        'messages': [],  # For storing chat messages
-        'documents': [],
-        'embeddings': [],
-        'index': None,
-        'processed_files': [],
-        'processed_urls': [],
-        'clear_url': False,
-        'selected_model': get_available_models()[0],
-        'selected_embedding_model': "all-MiniLM-L6-v2",
-        'api_key': "",
-        'thinking': False,  # Flag to track response generation
-        'last_response': None,  # Store last response
-        'user_input_key': 0  # Key for user input widget
-    }
-    
-    # Initialize any missing session state variables
-    for var, default_value in session_vars.items():
-        if var not in st.session_state:
-            st.session_state[var] = default_value
+    try:
+        if 'db_manager' not in st.session_state:
+            st.session_state.db_manager = DatabaseManager()
+        
+        # Define default session state variables
+        session_vars = {
+            'messages': [],
+            'documents': [],
+            'embeddings': [],
+            'index': None,
+            'processed_files': [],
+            'processed_urls': [],
+            'clear_url': False,
+            'selected_model': get_available_models()[0],
+            'selected_embedding_model': "all-MiniLM-L6-v2",
+            'api_key': "",
+            'thinking': False,
+            'user_input_key': 0,
+            'api_key_verified': False
+        }
+        
+        # Initialize missing variables
+        for key, value in session_vars.items():
+            if key not in st.session_state:
+                st.session_state[key] = value
+                
+    except Exception as e:
+        logger.error(f"Error initializing session state: {str(e)}")
+        st.error("Failed to initialize application state")
 
-def render_login_page():
-    st.title("🤖 Chatku AI")
-    st.caption("Chatku AI Dengan Retrieval Augmented Generation")
-    
-    tab1, tab2 = st.tabs(["Login", "Daftar"])
-    
-    with tab1:
-        with st.form("login_form"):
-            st.subheader("Login")
-            login_email = st.text_input("Email", placeholder="Masukkan email anda")
-            login_password = st.text_input("Password", type="password", placeholder="Masukkan password anda")
-            
-            if st.form_submit_button("Login", use_container_width=True):
-                if login_email and login_password:
-                    try:
-                        result = login_user(st.session_state.db_manager, login_email, login_password)
-                        if result and result.get("access_token"):
-                            st.success("✅ Berhasil login!")
-                            if result["user"].get("groq_api_key"):
-                                st.session_state.api_key = result["user"]["groq_api_key"]
-                                set_api_key(result["user"]["groq_api_key"])
-                            time.sleep(1)
-                            st.rerun()
-                        else:
-                            st.error("Email atau password salah")
-                    except Exception as e:
-                        st.error(f"Gagal login: {str(e)}")
-                else:
-                    st.warning("Silakan isi email dan password")
-    
-    with tab2:
-        with st.form("register_form"):
-            st.subheader("Daftar Akun Baru")
-            signup_email = st.text_input("Email", key="signup_email", placeholder="Masukkan email anda")
-            signup_password = st.text_input("Password", type="password", key="signup_pass", placeholder="Buat password anda")
-            signup_password_confirm = st.text_input("Konfirmasi Password", type="password", placeholder="Masukkan ulang password")
-            signup_groq_api = st.text_input(
-                "GROQ API Key",
-                type="password",
-                help="Dapatkan API key dari https://console.groq.com/",
-                placeholder="Masukkan GROQ API key"
-            )
-
-            st.write("**Persyaratan Password:**")
-            st.write("- Minimal 6 karakter")
-            st.write("- Minimal 1 huruf besar")
-            st.write("- Minimal 1 huruf kecil")
-            st.write("- Minimal 1 angka")
-            
-            if st.form_submit_button("Daftar", use_container_width=True):
-                if signup_password != signup_password_confirm:
-                    st.error("Password tidak cocok")
-                elif not signup_groq_api:
-                    st.error("GROQ API Key wajib diisi")
-                elif signup_email and signup_password:
-                    try:
-                        user = register_user(
-                            st.session_state.db_manager,
-                            signup_email,
-                            signup_password,
-                            signup_groq_api
-                        )
-                        if user:
-                            st.success("✅ Berhasil membuat akun!")
-                            time.sleep(1)
-                            st.rerun()
-                        else:
-                            st.error("Email sudah terdaftar atau terjadi kesalahan")
-                    except Exception as e:
-                        st.error(f"Gagal mendaftar: {str(e)}")
-                else:
-                    st.warning("Silakan lengkapi semua field")
-
-def handle_query(prompt: str) -> None:
-    """Handle user query and generate response"""
+def verify_api_key():
+    """Verify stored API key"""
     try:
         if not st.session_state.api_key:
-            st.error("Please enter your GROQ API key first.")
+            return False
+            
+        if not st.session_state.api_key_verified:
+            set_api_key(st.session_state.api_key)
+            st.session_state.api_key_verified = True
+            
+        return True
+        
+    except Exception as e:
+        logger.error(f"API key verification failed: {str(e)}")
+        st.session_state.api_key_verified = False
+        return False
+
+def handle_query(prompt: str) -> None:
+    """Handle user query with improved error handling"""
+    try:
+        if not prompt or not prompt.strip():
+            st.error("Please enter a message.")
             return
 
+        # Verify API key first
+        if not verify_api_key():
+            st.error("Please check your API key in the sidebar settings.")
+            return
+            
         # Add user message
         st.session_state.messages.append({"role": "user", "content": prompt})
         
-        # Set API key
-        set_api_key(st.session_state.api_key)
-        
-        # Generate response
-        with st.spinner("Generating response..."):
-            # Prepare context if index exists
-            if st.session_state.index is not None:
-                model = load_embedding_model(st.session_state.selected_embedding_model)
-                query_embedding = generate_embedding(prompt, model)
-                relevant_doc_indices = search_index(st.session_state.index, query_embedding)
-                context = "\n".join([st.session_state.documents[i][:1000] for i in relevant_doc_indices])
-                full_prompt = f"Berdasarkan konteks berikut:\n\n{context}\n\nJawab pertanyaan ini: {prompt}"
-            else:
-                full_prompt = prompt
-
-            response = query_llm(full_prompt, st.session_state.selected_model)
-            
-            if response and not response.startswith("An error occurred"):
+        # Use status for better progress indication
+        with st.status("💭 Thinking...") as status:
+            try:
+                # Prepare context if needed
+                if st.session_state.index is not None:
+                    status.update(label="🔍 Searching relevant context...")
+                    model = load_embedding_model(st.session_state.selected_embedding_model)
+                    query_embedding = generate_embedding(prompt, model)
+                    relevant_doc_indices = search_index(st.session_state.index, query_embedding)
+                    context = "\n".join([st.session_state.documents[i][:1000] for i in relevant_doc_indices])
+                    full_prompt = f"Berdasarkan konteks berikut:\n\n{context}\n\nJawab pertanyaan ini: {prompt}"
+                else:
+                    full_prompt = prompt
+                
+                status.update(label="🤖 Generating response...")
+                response = query_llm(full_prompt, st.session_state.selected_model)
+                
+                if response.startswith("An error occurred"):
+                    raise Exception(response)
+                    
                 # Add assistant response
                 st.session_state.messages.append({"role": "assistant", "content": response})
-                st.session_state.last_response = response
-            else:
-                st.error("Failed to get response. Please check your API key and try again.")
+                status.update(label="✅ Done!", state="complete")
+                
+            except Exception as e:
+                status.update(label="❌ Error!", state="error")
+                raise e
                 
     except Exception as e:
-        st.error(f"Error: {str(e)}")
+        error_msg = str(e)
+        logger.error(f"Error in handle_query: {error_msg}")
+        if "API key" in error_msg.lower():
+            st.error("Please check your API key in the sidebar settings.")
+        else:
+            st.error(f"An error occurred: {error_msg}")
+            
     finally:
-        # Increment user input key to reset the input field
-        st.session_state.user_input_key += 1
+        st.rerun()
 
 def chat_interface():
     """Render the chat interface"""
     st.title("🤖 Chatku AI")
     st.caption("Chatku AI dengan Retrieval Augmented Generation")
     
-    # Chat messages container
-    chat_container = st.container()
-    
     # Display messages
+    chat_container = st.container()
     with chat_container:
         for message in st.session_state.messages:
-            is_user = message["role"] == "user"
-            with st.chat_message(message["role"], avatar="🧑" if is_user else "🤖"):
+            with st.chat_message(message["role"]):
                 st.write(message["content"])
     
-    # Chat input at the bottom
-    user_input = st.chat_input("Ketik pesan Anda di sini...", key=f"chat_input_{st.session_state.user_input_key}")
-    
-    if user_input and not st.session_state.thinking:
-        st.session_state.thinking = True
-        handle_query(user_input)
-        st.session_state.thinking = False
+    # Chat input
+    if user_input := st.chat_input("Ketik pesan Anda di sini...", key=f"chat_input_{st.session_state.user_input_key}"):
+        if not st.session_state.thinking:
+            st.session_state.thinking = True
+            handle_query(user_input)
+            st.session_state.thinking = False
 
 def handle_sidebar():
+    """Handle sidebar UI and functionality"""
     user = get_current_user()
     if not user:
         st.error("User not authenticated")
@@ -197,22 +162,25 @@ def handle_sidebar():
     st.sidebar.write(f"👤 **{user['email']}**")
     st.sidebar.write("---")
     
+    # API Settings
     with st.sidebar.expander("API Settings"):
         current_api_key = st.session_state.get('api_key', '')
         
         st.markdown("""
             ### Cara Mendapatkan GROQ API Key
             1. Kunjungi [console.groq.com](https://console.groq.com/)
-            2. Buat akun atau login jika sudah punya akun
+            2. Buat akun atau login
             3. Di dashboard, klik "API Keys"
             4. Klik "Create API Key"
             5. Copy API Key yang dihasilkan
-            
-            API Key biasanya dimulai dengan 'gsk_'
+        API Key biasanya dimulai dengan 'gsk_'
         """)
         
         if current_api_key:
-            st.success("API Key sudah terpasang")
+            if st.session_state.api_key_verified:
+                st.success("✅ API Key terverifikasi")
+            else:
+                st.warning("API Key belum terverifikasi")
         else:
             st.warning("API Key belum diatur")
             
@@ -226,12 +194,16 @@ def handle_sidebar():
             )
             
             if st.form_submit_button("Simpan API Key"):
-                if not new_api_key:
-                    st.error("API key tidak boleh kosong")
-                elif new_api_key == current_api_key:
-                    st.info("API key tidak berubah")
-                else:
-                    try:
+                try:
+                    if not new_api_key:
+                        st.error("API key tidak boleh kosong")
+                    elif new_api_key == current_api_key and st.session_state.api_key_verified:
+                        st.info("API key tidak berubah")
+                    else:
+                        # Verify new API key first
+                        set_api_key(new_api_key)
+                        
+                        # If verification successful, save to database
                         success = st.session_state.db_manager.save_api_key(
                             user_id=user["id"],
                             api_key=new_api_key
@@ -239,15 +211,18 @@ def handle_sidebar():
                         
                         if success:
                             st.session_state.api_key = new_api_key
-                            set_api_key(new_api_key)
-                            st.success("API key berhasil disimpan!")
+                            st.session_state.api_key_verified = True
+                            st.success("✅ API key berhasil disimpan dan terverifikasi!")
                             time.sleep(1)
                             st.rerun()
                         else:
-                            st.error("Gagal menyimpan API key")
-                    except Exception as e:
-                        st.error(f"Terjadi kesalahan: {str(e)}")
+                            st.error("Gagal menyimpan API key ke database")
+                except Exception as e:
+                    logger.error(f"Error saving API key: {str(e)}")
+                    st.session_state.api_key_verified = False
+                    st.error(f"Gagal memverifikasi API key: {str(e)}")
 
+    # Model Settings
     with st.sidebar.expander("Model Settings"):
         with st.form("model_settings_form"):
             available_models = get_available_models()
@@ -268,17 +243,20 @@ def handle_sidebar():
             if st.form_submit_button("Simpan Model"):
                 st.session_state.selected_model = selected_model
                 st.session_state.selected_embedding_model = selected_embedding_model
-                st.success("Model berhasil diperbarui!")
+                st.success("✅ Model berhasil diperbarui!")
 
+    # Document Processing
     with st.sidebar.expander("Document Processing"):
-        # File Upload
-        uploaded_file = st.file_uploader("Upload File (PDF/Word)", type=['pdf', 'docx'])
+        uploaded_file = st.file_uploader(
+            "Upload File (PDF/Word)",
+            type=['pdf', 'docx'],
+            help="Upload dokumen untuk diproses"
+        )
         
-        # URL Input
         url = st.text_input(
             "URL Input",
             value="" if st.session_state.clear_url else st.session_state.get('url', ''),
-            placeholder="Atau masukkan URL"
+            placeholder="Atau masukkan URL untuk diproses"
         )
         
         if st.button("Proses File/URL"):
@@ -290,6 +268,7 @@ def handle_sidebar():
                 else:
                     st.warning("Silakan upload file atau masukkan URL")
             except Exception as e:
+                logger.error(f"Error processing input: {str(e)}")
                 st.error(f"Gagal memproses: {str(e)}")
 
         st.write("---")
@@ -312,33 +291,39 @@ def handle_sidebar():
         if st.button("Hapus Semua Data", use_container_width=True):
             clean_session_data()
 
+    # Logout button
     st.sidebar.write("---")
     if st.sidebar.button("Logout", use_container_width=True):
         logout_user()
         st.rerun()
 
 def process_file(uploaded_file):
+    """Process uploaded file"""
     try:
         with st.spinner("Memproses file..."):
             file_path = save_uploaded_file(uploaded_file)
             content = read_file(file_path)
             st.session_state.documents.append(content)
             st.session_state.processed_files.append(uploaded_file.name)
-            st.success(f"File '{uploaded_file.name}' berhasil diproses!")
+            st.success(f"✅ File '{uploaded_file.name}' berhasil diproses!")
     except Exception as e:
+        logger.error(f"Error processing file: {str(e)}")
         st.error(f"Gagal memproses file: {str(e)}")
 
 def process_url(url):
+    """Process URL content"""
     try:
         with st.spinner("Memproses URL..."):
             content = read_url(url)
             st.session_state.documents.append(content)
             st.session_state.processed_urls.append(url)
-            st.success(f"URL '{url}' berhasil diproses!")
+            st.success(f"✅ URL '{url}' berhasil diproses!")
     except Exception as e:
+        logger.error(f"Error processing URL: {str(e)}")
         st.error(f"Gagal memproses URL: {str(e)}")
 
 def generate_embeddings():
+    """Generate embeddings for documents"""
     if not st.session_state.documents:
         st.warning("Tidak ada dokumen yang perlu diproses")
         return
@@ -354,11 +339,13 @@ def generate_embeddings():
                 st.session_state.embeddings.append(embedding)
                 progress_bar.progress((i + 1) / len(st.session_state.documents))
                 
-            st.success(f"Berhasil menghasilkan embeddings untuk {len(st.session_state.embeddings)} dokumen")
+            st.success(f"✅ Berhasil menghasilkan embeddings untuk {len(st.session_state.embeddings)} dokumen!")
     except Exception as e:
+        logger.error(f"Error generating embeddings: {str(e)}")
         st.error(f"Gagal menghasilkan embeddings: {str(e)}")
 
 def create_search_index():
+    """Create search index from embeddings"""
     if not st.session_state.embeddings:
         st.warning("Harap generate embeddings terlebih dahulu")
         return
@@ -366,14 +353,13 @@ def create_search_index():
     try:
         with st.spinner("Membuat index pencarian..."):
             st.session_state.index = create_index(st.session_state.embeddings)
-            st.success("Index pencarian berhasil dibuat!")
+            st.success("✅ Index pencarian berhasil dibuat!")
     except Exception as e:
+        logger.error(f"Error creating search index: {str(e)}")
         st.error(f"Gagal membuat index: {str(e)}")
 
 def clean_session_data():
-    """
-    Membersihkan semua data dari session state dan mengembalikan aplikasi ke keadaan awal
-    """
+    """Clean all session data"""
     try:
         with st.spinner("Membersihkan data..."):
             # Reset session variables
@@ -385,50 +371,49 @@ def clean_session_data():
                 'processed_files': [],
                 'processed_urls': [],
                 'clear_url': True,
-                'thinking': False,
-                'last_response': None,
-                'user_input_key': 0
+                'thinking': False
             }
             
             for key, value in session_vars.items():
                 if key in st.session_state:
                     st.session_state[key] = value
             
-            st.success("Semua data berhasil dibersihkan!")
+            st.success("✅ Semua data berhasil dibersihkan!")
             st.rerun()
             
     except Exception as e:
+        logger.error(f"Error cleaning session data: {str(e)}")
         st.error(f"Gagal membersihkan data: {str(e)}")
-
-def handle_main_area():
-    """Main chat area handler"""
-    # Display the chat interface
-    chat_interface()
 
 def main():
     """Main application entry point"""
-    initialize_session_state()
+    try:
+        initialize_session_state()
 
-    # Check authentication
-    if 'token' not in st.session_state:
-        render_login_page()
-        return
+        # Check authentication
+        if 'token' not in st.session_state:
+            render_login_page()
+            return
 
-    # Verify user session
-    user = get_current_user()
-    if not user:
-        st.session_state.token = None
-        st.rerun()
-        return
+        # Verify user session
+        user = get_current_user()
+        if not user:
+            st.session_state.token = None
+            st.rerun()
+            return
 
-    # Render main application
-    col1, col2 = st.columns([1, 3])
-    
-    with col1:
-        handle_sidebar()
-    
-    with col2:
-        handle_main_area()
+        # Render main application
+        col1, col2 = st.columns([1, 3])
+        
+        with col1:
+            handle_sidebar()
+        
+        with col2:
+            chat_interface()
+
+    except Exception as e:
+        logger.error(f"Application error: {str(e)}")
+        st.error("An unexpected error occurred. Please try refreshing the page.")
 
 if __name__ == "__main__":
     main()
