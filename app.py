@@ -13,7 +13,7 @@ import os
 from utils import (
     load_embedding_model, read_file, read_url, generate_embedding,
     query_llm, save_uploaded_file, create_index, search_index,
-    set_api_key, get_available_models
+    set_api_key, get_available_models, initialize_groq_client
 )
 from db_utils import DatabaseManager
 from auth_utils import (
@@ -147,6 +147,56 @@ def display_chat_history():
                     st.caption(message_time)
         st.write("---")
 
+def handle_query(query):
+    try:
+        if not st.session_state.api_key:
+            st.error("Silakan masukkan GROQ API key yang valid")
+            return
+
+        # Initialize GROQ client with current API key
+        if not initialize_groq_client(st.session_state.api_key):
+            st.error("Gagal menginisialisasi GROQ client. Periksa API key Anda.")
+            return
+
+        st.session_state.conversation_history.append({"role": "user", "content": query})
+
+        if st.session_state.index is not None and len(st.session_state.documents) > 0:
+            with st.spinner("Mencari konteks yang relevan..."):
+                try:
+                    model = load_embedding_model(st.session_state.selected_embedding_model)
+                    query_embedding = generate_embedding(query, model)
+                    relevant_doc_indices = search_index(st.session_state.index, query_embedding)
+                    context = "\n".join([st.session_state.documents[i][:1000] for i in relevant_doc_indices])
+                    prompt = f"Berdasarkan konteks berikut:\n\n{context}\n\nJawab pertanyaan ini: {query}"
+                except Exception as e:
+                    st.warning(f"Gagal mencari konteks: {str(e)}. Menggunakan query langsung.")
+                    prompt = query
+        else:
+            prompt = query
+
+        with st.spinner("Menghasilkan respons..."):
+            response = query_llm(prompt, st.session_state.selected_model)
+
+            if response:
+                if not isinstance(response, str):
+                    response = str(response)
+                
+                if not response.startswith("An error occurred"):
+                    st.session_state.conversation_history.append({"role": "assistant", "content": response})
+                    st.session_state.chat_history.append(("user", query))
+                    st.session_state.chat_history.append(("assistant", response))
+                    return True
+                else:
+                    st.error("Gagal mendapatkan respons dari model. Silakan coba lagi.")
+                    return False
+            else:
+                st.error("Tidak ada respons dari model. Silakan coba lagi.")
+                return False
+
+    except Exception as e:
+        st.error(f"Terjadi kesalahan: {str(e)}")
+        return False
+
 def handle_main_area():
     st.title("Chatku AI")
     st.caption("Chatku AI dengan Retrieval Augmented Generation")
@@ -174,7 +224,6 @@ def handle_sidebar():
     with st.sidebar.expander("API Settings"):
         current_api_key = st.session_state.get('api_key', '')
         
-        # Tambahkan informasi tentang GROQ API Key
         st.markdown("""
             ### Cara Mendapatkan GROQ API Key
             1. Kunjungi [console.groq.com](https://console.groq.com/)
@@ -315,38 +364,6 @@ def process_url(url):
     except Exception as e:
         st.error(f"Gagal memproses URL: {str(e)}")
 
-def handle_query(query):
-    try:
-        if not st.session_state.api_key:
-            st.error("Silakan masukkan GROQ API key yang valid")
-            return
-
-        st.session_state.conversation_history.append({"role": "user", "content": query})
-
-        if st.session_state.index is not None:
-            with st.spinner("Mencari konteks yang relevan..."):
-                model = load_embedding_model(st.session_state.selected_embedding_model)
-                query_embedding = generate_embedding(query, model)
-                relevant_doc_indices = search_index(st.session_state.index, query_embedding)
-                context = "\n".join([st.session_state.documents[i][:1000] for i in relevant_doc_indices])
-                prompt = f"Berdasarkan konteks berikut:\n\n{context}\n\nJawab pertanyaan ini: {query}"
-        else:
-            prompt = query
-
-        set_api_key(st.session_state.api_key)
-        with st.spinner("Menghasilkan respons..."):
-            response = query_llm(prompt, st.session_state.selected_model)
-
-        if response and not response.startswith("An error occurred"):
-            st.session_state.conversation_history.append({"role": "assistant", "content": response})
-            st.session_state.chat_history.append(("user", query))
-            st.session_state.chat_history.append(("assistant", response))
-        else:
-            st.error("Gagal mendapatkan respons. Silakan cek API key Anda dan coba lagi.")
-
-    except Exception as e:
-        st.error(f"Terjadi kesalahan: {str(e)}")
-
 def generate_embeddings():
     if not st.session_state.documents:
         st.warning("Tidak ada dokumen yang perlu diproses")
@@ -380,12 +397,8 @@ def create_search_index():
         st.error(f"Gagal membuat index: {str(e)}")
 
 def clean_session_data():
-    """
-    Membersihkan semua data dari session state dan mengembalikan aplikasi ke keadaan awal
-    """
     try:
         with st.spinner("Membersihkan data..."):
-            # Reset semua nilai ke default
             st.session_state.documents = []
             st.session_state.embeddings = []
             st.session_state.chat_history = []
@@ -395,10 +408,7 @@ def clean_session_data():
             st.session_state.processed_urls = []
             st.session_state.clear_url = True
             
-            # Tampilkan pesan sukses
             st.success("Semua data berhasil dibersihkan!")
-            
-            # Refresh tampilan
             st.rerun()
             
     except Exception as e:
