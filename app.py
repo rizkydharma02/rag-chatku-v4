@@ -1,3 +1,4 @@
+# app.py
 import streamlit as st
 import time
 from datetime import datetime
@@ -25,7 +26,6 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# Initialize session state
 def initialize_session_state():
     """Initialize session state variables"""
     if 'db_manager' not in st.session_state:
@@ -33,7 +33,7 @@ def initialize_session_state():
     
     # Define all session state variables
     session_vars = {
-        'messages': [],  # For storing chat messages
+        'messages': [],
         'documents': [],
         'embeddings': [],
         'index': None,
@@ -42,11 +42,7 @@ def initialize_session_state():
         'clear_url': False,
         'selected_model': get_available_models()[0],
         'selected_embedding_model': "all-MiniLM-L6-v2",
-        'api_key': "",
-        'thinking': False,  # Flag to track response generation
-        'last_response': None,  # Store last response
-        'user_input_key': 0,  # Key for user input widget
-        'error_message': None  # Store error messages
+        'api_key': ""
     }
     
     # Initialize any missing session state variables
@@ -128,6 +124,48 @@ def render_login_page():
                 else:
                     st.warning("Silakan lengkapi semua field")
 
+def handle_query(prompt: str) -> None:
+    """Handle user query and generate response"""
+    try:
+        if not st.session_state.api_key:
+            st.error("Please enter your GROQ API key first.")
+            return
+
+        # Add user message
+        st.session_state.messages.append({"role": "user", "content": prompt})
+
+        # Generate response
+        with st.spinner("Generating response..."):
+            # Get the response from LLM
+            response = query_llm(prompt, st.session_state.selected_model)
+            
+            if not response.startswith("Error"):
+                # Add assistant response
+                st.session_state.messages.append({
+                    "role": "assistant", 
+                    "content": response
+                })
+                st.rerun()
+            else:
+                st.error(response)
+                
+    except Exception as e:
+        st.error(f"Error: {str(e)}")
+
+def chat_interface():
+    """Render chat interface"""
+    st.title("🤖 Chatku AI")
+    st.caption("Chatku AI dengan Retrieval Augmented Generation")
+    
+    # Display messages
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.write(message["content"])
+    
+    # Chat input
+    if prompt := st.chat_input("Ketik pesan Anda di sini..."):
+        handle_query(prompt)
+
 def process_file(uploaded_file):
     """Process uploaded file"""
     try:
@@ -190,79 +228,6 @@ def create_search_index():
     except Exception as e:
         st.error(f"Gagal membuat index: {str(e)}")
 
-def clean_session_data():
-    """Clean all session data"""
-    try:
-        with st.spinner("Membersihkan data..."):
-            session_vars = {
-                'messages': [],
-                'documents': [],
-                'embeddings': [],
-                'index': None,
-                'processed_files': [],
-                'processed_urls': [],
-                'clear_url': True,
-                'thinking': False,
-                'last_response': None,
-                'user_input_key': 0,
-                'error_message': None
-            }
-            
-            for key, value in session_vars.items():
-                if key in st.session_state:
-                    st.session_state[key] = value
-            
-            st.success("Semua data berhasil dibersihkan!")
-            st.rerun()
-            
-    except Exception as e:
-        st.error(f"Gagal membersihkan data: {str(e)}")
-
-def handle_query(prompt: str) -> None:
-    """Handle user query and generate response"""
-    try:
-        if not st.session_state.api_key:
-            st.error("Please enter your GROQ API key first.")
-            return
-
-        # Add user message immediately
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        
-        # Ensure API key is set
-        if not set_api_key(st.session_state.api_key):
-            st.error("Invalid API key format")
-            return
-        
-        # Generate response
-        with st.spinner("Generating response..."):
-            # Prepare context if index exists
-            if st.session_state.index is not None:
-                model = load_embedding_model(st.session_state.selected_embedding_model)
-                query_embedding = generate_embedding(prompt, model)
-                relevant_doc_indices = search_index(st.session_state.index, query_embedding)
-                context = "\n".join([st.session_state.documents[i][:1000] for i in relevant_doc_indices])
-                full_prompt = f"Berdasarkan konteks berikut:\n\n{context}\n\nJawab pertanyaan ini: {prompt}"
-            else:
-                full_prompt = prompt
-
-            # Query LLM with explicit error handling
-            response = query_llm(full_prompt, st.session_state.selected_model)
-            
-            if response and not response.startswith("Error"):
-                # Add assistant response
-                st.session_state.messages.append({"role": "assistant", "content": response})
-                st.session_state.last_response = response
-                st.session_state.error_message = None
-            else:
-                st.session_state.error_message = f"API Response Error: {response}"
-                
-    except Exception as e:
-        st.session_state.error_message = f"Error in handle_query: {str(e)}"
-    finally:
-        # Increment user input key to reset the input field
-        st.session_state.user_input_key += 1
-        st.rerun()
-
 def handle_sidebar():
     """Handle sidebar components"""
     user = get_current_user()
@@ -288,7 +253,6 @@ def handle_sidebar():
         """)
         
         if current_api_key:
-            # Display partial API key
             masked_key = f"gsk_...{current_api_key[-4:]}" if current_api_key.startswith('gsk_') else "Invalid API Key Format"
             st.success(f"API Key aktif: {masked_key}")
         else:
@@ -297,7 +261,7 @@ def handle_sidebar():
         with st.form("api_key_form"):
             new_api_key = st.text_input(
                 "GROQ API Key",
-                value="",  # Always empty for security
+                value="",
                 type="password",
                 placeholder="Masukkan GROQ API Key Anda",
                 help="Dapatkan API key dari https://console.groq.com/"
@@ -310,7 +274,6 @@ def handle_sidebar():
                     st.error("Invalid API key format. GROQ API key harus dimulai dengan 'gsk_'")
                 else:
                     try:
-                        # Validate and save API key
                         if validate_groq_api_key(new_api_key):
                             success = st.session_state.db_manager.save_api_key(
                                 user_id=user["id"],
@@ -357,7 +320,8 @@ def handle_sidebar():
         uploaded_file = st.file_uploader("Upload File (PDF/Word)", type=['pdf', 'docx'])
         
         # URL Input
-        url = st.text_input("URL Input",
+        url = st.text_input(
+            "URL Input",
             value="" if st.session_state.clear_url else st.session_state.get('url', ''),
             placeholder="Atau masukkan URL"
         )
@@ -398,45 +362,32 @@ def handle_sidebar():
         logout_user()
         st.rerun()
 
-def chat_interface():
-    """Render the chat interface"""
-    st.title("🤖 Chatku AI")
-    st.caption("Chatku AI dengan Retrieval Augmented Generation")
-    
-    # Chat messages container
-    chat_container = st.container()
-    
-    # Display existing messages
-    with chat_container:
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"], avatar="🧑" if message["role"] == "user" else "🤖"):
-                st.write(message["content"])
-                if message["role"] == "assistant":
-                    st.write("---")
-    
-    # Display error message if exists
-    if st.session_state.error_message:
-        st.error(st.session_state.error_message)
-    
-    # Chat input at the bottom
-    if prompt := st.chat_input(
-        "Ketik pesan Anda di sini...",
-        key=f"chat_input_{st.session_state.user_input_key}",
-        max_chars=4000
-    ):
-        if not st.session_state.thinking:
-            st.session_state.thinking = True
-            handle_query(prompt)
-            st.session_state.thinking = False
-
-def handle_main_area():
-    """Main chat area handler"""
-    # Display the chat interface
-    chat_interface()
+def clean_session_data():
+    """Clean all session data"""
+    try:
+        with st.spinner("Membersihkan data..."):
+            session_vars = {
+                'messages': [],
+                'documents': [],
+                'embeddings': [],
+                'index': None,
+                'processed_files': [],
+                'processed_urls': [],
+                'clear_url': True
+            }
+            
+            for key, value in session_vars.items():
+                if key in st.session_state:
+                    st.session_state[key] = value
+            
+            st.success("Semua data berhasil dibersihkan!")
+            st.rerun()
+            
+    except Exception as e:
+        st.error(f"Gagal membersihkan data: {str(e)}")
 
 def main():
     """Main application entry point"""
-    # Initialize session state
     initialize_session_state()
 
     # Check authentication
@@ -458,7 +409,7 @@ def main():
         handle_sidebar()
     
     with col2:
-        handle_main_area()
+        chat_interface()
 
 if __name__ == "__main__":
     main()
