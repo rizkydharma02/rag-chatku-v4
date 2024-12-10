@@ -42,7 +42,9 @@ def initialize_session_state():
         'selected_embedding_model': "all-MiniLM-L6-v2",
         'api_key': "",
         'current_query': "",
-        'last_timestamp': None
+        'last_timestamp': None,
+        'chat_initialized': False,  # Added flag for chat initialization
+        'response_placeholder': None  # Added placeholder for response
     }
     
     for key, default_value in default_values.items():
@@ -129,38 +131,93 @@ def get_timestamp():
         return st.session_state.last_timestamp.strftime("%H:%M")
     return None
 
-def display_chat_history():
-    for role, message in st.session_state.chat_history:
-        message_time = get_timestamp()
-        
+def display_chat_message(role, message, message_time=None):
+    message_container = st.container()
+    with message_container:
         if role == "user":
-            message_container = st.container()
-            with message_container:
-                st.write(f"**You**: {message}")
-                if message_time:
-                    st.caption(f"{message_time} ✓✓")
+            st.write(f"**You**: {message}")
+            if message_time:
+                st.caption(f"{message_time} ✓✓")
         else:
-            message_container = st.container()
-            with message_container:
-                st.write(f"**🤖 Assistant**: {message}")
-                if message_time:
-                    st.caption(message_time)
+            st.write(f"**🤖 Assistant**: {message}")
+            if message_time:
+                st.caption(message_time)
         st.write("---")
+
+def display_chat_history():
+    chat_container = st.container()
+    with chat_container:
+        for role, message in st.session_state.chat_history:
+            message_time = get_timestamp()
+            display_chat_message(role, message, message_time)
+
+def handle_query(query):
+    try:
+        if not st.session_state.api_key:
+            st.error("Silakan masukkan GROQ API key yang valid")
+            return False
+
+        # Tambahkan query ke chat history
+        st.session_state.chat_history.append(("user", query))
+        
+        # Prepare response placeholder
+        if 'response_placeholder' not in st.session_state:
+            st.session_state.response_placeholder = st.empty()
+
+        # Process query
+        if st.session_state.index is not None:
+            with st.spinner("Mencari konteks yang relevan..."):
+                model = load_embedding_model(st.session_state.selected_embedding_model)
+                query_embedding = generate_embedding(query, model)
+                relevant_doc_indices = search_index(st.session_state.index, query_embedding)
+                context = "\n".join([st.session_state.documents[i][:1000] for i in relevant_doc_indices])
+                prompt = f"Berdasarkan konteks berikut:\n\n{context}\n\nJawab pertanyaan ini: {query}"
+        else:
+            prompt = query
+
+        # Get response
+        set_api_key(st.session_state.api_key)
+        with st.spinner("Menghasilkan respons..."):
+            response = query_llm(prompt, st.session_state.selected_model)
+
+        if response and not response.startswith("An error occurred"):
+            # Update histories
+            st.session_state.chat_history.append(("assistant", response))
+            st.session_state.conversation_history.extend([
+                {"role": "user", "content": query},
+                {"role": "assistant", "content": response}
+            ])
+            return True
+        else:
+            st.error("Gagal mendapatkan respons. Silakan cek API key Anda dan coba lagi.")
+            return False
+
+    except Exception as e:
+        st.error(f"Terjadi kesalahan: {str(e)}")
+        return False
 
 def handle_main_area():
     st.title("Chatku AI")
     st.caption("Chatku AI dengan Retrieval Augmented Generation")
     
-    # Display chat history
-    display_chat_history()
+    # Create main containers
+    chat_display = st.container()
+    input_container = st.container()
     
-    # Chat input
-    with st.form(key="chat_form", clear_on_submit=True):
-        query = st.text_input("Message", placeholder="Ketik pesan Anda di sini...", key="current_query")
-        if st.form_submit_button("Kirim"):
-            if query:
-                handle_query(query)
-                st.rerun()
+    # Display chat history in the first container
+    with chat_display:
+        display_chat_history()
+    
+    # Input form in the second container
+    with input_container:
+        with st.form(key="chat_form", clear_on_submit=True):
+            query = st.text_input("Message", placeholder="Ketik pesan Anda di sini...", key="current_query")
+            submit_button = st.form_submit_button("Kirim")
+            
+            if submit_button and query:
+                success = handle_query(query)
+                if success:
+                    st.rerun()
 
 def handle_sidebar():
     user = get_current_user()
@@ -174,7 +231,6 @@ def handle_sidebar():
     with st.sidebar.expander("API Settings"):
         current_api_key = st.session_state.get('api_key', '')
         
-        # Tambahkan informasi tentang GROQ API Key
         st.markdown("""
             ### Cara Mendapatkan GROQ API Key
             1. Kunjungi [console.groq.com](https://console.groq.com/)
@@ -314,38 +370,6 @@ def process_url(url):
             st.success(f"URL '{url}' berhasil diproses!")
     except Exception as e:
         st.error(f"Gagal memproses URL: {str(e)}")
-
-def handle_query(query):
-    try:
-        if not st.session_state.api_key:
-            st.error("Silakan masukkan GROQ API key yang valid")
-            return
-
-        st.session_state.conversation_history.append({"role": "user", "content": query})
-
-        if st.session_state.index is not None:
-            with st.spinner("Mencari konteks yang relevan..."):
-                model = load_embedding_model(st.session_state.selected_embedding_model)
-                query_embedding = generate_embedding(query, model)
-                relevant_doc_indices = search_index(st.session_state.index, query_embedding)
-                context = "\n".join([st.session_state.documents[i][:1000] for i in relevant_doc_indices])
-                prompt = f"Berdasarkan konteks berikut:\n\n{context}\n\nJawab pertanyaan ini: {query}"
-        else:
-            prompt = query
-
-        set_api_key(st.session_state.api_key)
-        with st.spinner("Menghasilkan respons..."):
-            response = query_llm(prompt, st.session_state.selected_model)
-
-        if response and not response.startswith("An error occurred"):
-            st.session_state.conversation_history.append({"role": "assistant", "content": response})
-            st.session_state.chat_history.append(("user", query))
-            st.session_state.chat_history.append(("assistant", response))
-        else:
-            st.error("Gagal mendapatkan respons. Silakan cek API key Anda dan coba lagi.")
-
-    except Exception as e:
-        st.error(f"Terjadi kesalahan: {str(e)}")
 
 def generate_embeddings():
     if not st.session_state.documents:
