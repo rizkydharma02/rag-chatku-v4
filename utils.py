@@ -85,8 +85,6 @@ def query_llm(prompt: str, model_name: str) -> str:
         logger.error(f"Error in query_llm: {str(e)}")
         return f"Error: {str(e)}"
 
-# [Bagian kode lainnya tetap sama]
-
 def read_pdf(file_path: str) -> str:
     """Read content from PDF file"""
     try:
