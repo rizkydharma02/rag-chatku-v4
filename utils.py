@@ -5,12 +5,12 @@ import docx
 import requests
 from bs4 import BeautifulSoup
 from sentence_transformers import SentenceTransformer
-import groq
 import faiss
 import numpy as np
 import streamlit as st
 import tempfile
 import logging
+import json
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -25,58 +25,52 @@ def get_available_models():
 
 def set_api_key(api_key):
     """Set GROQ API key"""
-    try:
-        if api_key and api_key.strip():
-            api_key = api_key.strip()
-            if not api_key.startswith('gsk_'):
-                return False
-            os.environ["GROQ_API_KEY"] = api_key
-            return True
-        return False
-    except Exception as e:
-        logger.error(f"Error setting API key: {str(e)}")
-        return False
+    if api_key and api_key.strip():
+        os.environ["GROQ_API_KEY"] = api_key.strip()
+        return True
+    return False
 
 def query_llm(prompt, model_name):
-    """Query the LLM with proper error handling"""
+    """Query LLM using direct API call"""
     try:
         api_key = os.getenv("GROQ_API_KEY")
         if not api_key:
             return "Error: API key not found"
 
-        # Initialize groq client
-        client = groq.Groq()
-        client.api_key = api_key  # Set API key directly
+        # Making a direct API call using requests
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        data = {
+            "model": model_name,
+            "messages": [
+                {"role": "system", "content": "You are an AI assistant that provides clear, accurate responses."},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.7,
+            "max_tokens": 2048
+        }
 
-        try:
-            # Make API call
-            response = client.chat.completions.create(
-                model=model_name,
-                messages=[
-                    {"role": "system", "content": "You are an AI assistant that provides clear, accurate responses."},
-                    {"role": "user", "content": prompt}
-                ]
-            )
+        response = requests.post(
+            "https://api.groq.com/v1/chat/completions",
+            headers=headers,
+            json=data
+        )
 
-            # Return response content
-            if hasattr(response.choices[0], 'message'):
-                return response.choices[0].message.content
-            else:
-                return "Error: Invalid response format"
-
-        except groq.error.GroqError as e:
-            logger.error(f"Groq API Error: {str(e)}")
-            return f"Error: {str(e)}"
-            
-        except Exception as e:
-            logger.error(f"Error during API call: {str(e)}")
-            return "Error: Failed to communicate with Groq API"
+        if response.status_code == 200:
+            result = response.json()
+            if 'choices' in result and len(result['choices']) > 0:
+                return result['choices'][0]['message']['content']
+            return "Error: No response content"
+        else:
+            error_message = response.json().get('error', {}).get('message', 'Unknown error')
+            return f"Error: {error_message}"
 
     except Exception as e:
-        logger.error(f"General error in query_llm: {str(e)}")
+        logger.error(f"Error in query_llm: {str(e)}")
         return f"Error: {str(e)}"
-
-# Rest of the utility functions remain the same
 def read_pdf(file_path):
     try:
         with open(file_path, 'rb') as file:
