@@ -87,8 +87,11 @@ def query_llm(prompt, model_name):
         return "Error: API key not found. Please configure your API key first."
 
     try:
-        # Inisialisasi Groq client tanpa argumen tambahan
-        client = groq.Groq(api_key=st.session_state.api_key)
+        # Atur konfigurasi manual untuk memastikan proxies tidak diteruskan
+        client = groq.Groq(
+            api_key=st.session_state.api_key,  # API key saja
+            http_client=None  # Pastikan klien HTTP default digunakan
+        )
         
         logger.info("Groq client initialized successfully.")
 
@@ -110,14 +113,13 @@ def query_llm(prompt, model_name):
             return "Error: Unexpected response format from API"
     
     except TypeError as e:
-        # Log error jika ada argumen tidak dikenal
         logger.error(f"TypeError in query_llm: {str(e)}. Ensure no unexpected arguments are passed.")
         return "Error: Invalid API client initialization. Please check the API documentation."
     
     except Exception as e:
-        # Log error umum
         logger.error(f"Error in query_llm: {str(e)}")
         return "Error: Failed to get response. Please check your API key and try again."
+
 
 
 def save_uploaded_file(uploaded_file):
