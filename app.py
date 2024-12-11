@@ -249,77 +249,99 @@ def handle_main_area():
                     st.rerun()
 
 def handle_query(query):
-    """Handle query with improved API key validation and response handling"""
+    """Handle query with improved error handling"""
     try:
-        if not st.session_state.get('api_key'):
-            # Try to get API key from database
-            if 'user_id' in st.session_state:
-                stored_api_key = st.session_state.db_manager.get_api_key(st.session_state.user_id)
-                if stored_api_key:
-                    st.session_state.api_key = stored_api_key
-                    set_api_key(stored_api_key)
-                else:
-                    st.error("API key tidak ditemukan. Silakan periksa pengaturan API")
-                    return
-            else:
-                st.error("Silakan login kembali")
-                return
+        # Validate API key
+        if not st.session_state.api_key:
+            st.error("Silakan masukkan GROQ API key yang valid")
+            return
 
-        # Ensure API key is set
-        set_api_key(st.session_state.api_key)
+        # Add message to history first
+        st.session_state.chat_history.append(("user", query))
 
-        # Add user message to history
-        st.session_state.conversation_history.append({
-            "role": "user",
-            "content": query
-        })
-
-        # Prepare prompt with context if available
+        # Prepare context and prompt
         if st.session_state.index is not None:
-            with st.spinner("Mencari konteks yang relevan..."):
+            try:
                 model = load_embedding_model(st.session_state.selected_embedding_model)
                 query_embedding = generate_embedding(query, model)
                 relevant_doc_indices = search_index(st.session_state.index, query_embedding)
                 context = "\n".join([st.session_state.documents[i][:1000] for i in relevant_doc_indices])
                 prompt = f"Berdasarkan konteks berikut:\n\n{context}\n\nJawab pertanyaan ini: {query}"
+            except Exception as e:
+                print(f"Error preparing context: {str(e)}")
+                prompt = query
         else:
             prompt = query
 
-        # Generate response with explicit error checking
-        with st.spinner("Menghasilkan respons..."):
-            try:
-                response = query_llm(prompt, st.session_state.selected_model)
-                
-                # Validate response
-                if not response:
-                    raise ValueError("Tidak ada respons dari API")
-                
-                if isinstance(response, str) and response.startswith("An error occurred"):
-                    raise ValueError(response)
-                
-                # Update state with successful response
-                st.session_state.chat_history.append(("user", query))
-                st.session_state.chat_history.append(("assistant", response))
-                st.session_state.conversation_history.append({
-                    "role": "assistant",
-                    "content": response
-                })
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": response
-                })
-                st.session_state.last_response = response
-                st.session_state.error_message = None
-                
-            except Exception as e:
-                error_msg = f"Error generating response: {str(e)}"
-                st.error(error_msg)
-                st.session_state.error_message = error_msg
-                raise
+        # Set API key and get response
+        set_api_key(st.session_state.api_key)
+        response = query_llm(prompt, st.session_state.selected_model)
+
+        # Validate and process response
+        if response and not response.startswith("An error occurred"):
+            # Add response to chat history
+            st.session_state.chat_history.append(("assistant", response))
+            
+            # Update conversation history
+            st.session_state.conversation_history.extend([
+                {"role": "user", "content": query},
+                {"role": "assistant", "content": response}
+            ])
+
+            # Force update UI
+            st.rerun()
+        else:
+            st.error("Gagal mendapatkan respons. Silakan coba lagi.")
 
     except Exception as e:
-        st.error(f"Terjadi kesalahan: {str(e)}")
-        st.session_state.error_message = str(e)
+        print(f"Error in handle_query: {str(e)}")
+        st.error("Terjadi kesalahan saat memproses permintaan Anda.")
+
+def handle_main_area():
+    """Handle main chat area with improved response handling"""
+    st.title("Chatku AI")
+    st.caption("Chatku AI dengan Retrieval Augmented Generation")
+
+    # Display chat history
+    if st.session_state.chat_history:
+        for role, msg in st.session_state.chat_history:
+            with st.chat_message(role):
+                st.write(msg)
+
+    # Chat input
+    if prompt := st.chat_input("Ketik pesan Anda di sini..."):
+        if not st.session_state.get('is_processing', False):
+            try:
+                st.session_state.is_processing = True
+                handle_query(prompt)
+            finally:
+                st.session_state.is_processing = False
+
+def initialize_session_state():
+    """Initialize session state with minimal required values"""
+    if 'db_manager' not in st.session_state:
+        st.session_state.db_manager = DatabaseManager()
+    
+    # Only initialize essential values
+    default_values = {
+        'chat_history': [],
+        'conversation_history': [],
+        'selected_model': get_available_models()[0],
+        'selected_embedding_model': "all-MiniLM-L6-v2",
+        'api_key': None,
+        'is_processing': False
+    }
+    
+    for key, default_value in default_values.items():
+        if key not in st.session_state:
+            st.session_state[key] = default_value
+
+    # Load API key if available
+    if 'user_id' in st.session_state and not st.session_state.api_key:
+        api_key = st.session_state.db_manager.get_api_key(st.session_state.user_id)
+        if api_key:
+            st.session_state.api_key = api_key
+            set_api_key(api_key)
 
 def handle_sidebar():
     """Handle sidebar with improved API key management"""
