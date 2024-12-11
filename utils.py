@@ -9,7 +9,7 @@ import numpy as np
 import streamlit as st
 import tempfile
 import logging
-from groq import ChatCompletion
+import groq.client
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -21,10 +21,9 @@ def load_embedding_model(model_name):
     return SentenceTransformer(model_name)
 
 def set_api_key(api_key):
-    """Simply store API key in session state and env var"""
+    """Store API key in session state"""
     if api_key:
         st.session_state.api_key = api_key
-        os.environ["GROQ_API_KEY"] = api_key
         return True
     return False
 
@@ -88,8 +87,11 @@ def query_llm(prompt, model_name):
         return "Error: API key not found. Please configure your API key first."
 
     try:
-        # Create completion using environment variable for API key
-        response = ChatCompletion.create(
+        # Create a new client for each request
+        client = groq.client.Groq(api_key=st.session_state.api_key)
+        
+        # Make the API call
+        completion = client.chat.completions.create(
             model=model_name,
             messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
@@ -99,14 +101,14 @@ def query_llm(prompt, model_name):
             max_tokens=2048
         )
         
-        if hasattr(response, 'choices') and len(response.choices) > 0:
-            return response.choices[0].message.content
+        if hasattr(completion.choices[0], 'message'):
+            return completion.choices[0].message.content
         else:
-            return "Error: No response received from the API"
+            return "Error: Unexpected response format from API"
             
     except Exception as e:
         logger.error(f"Error in query_llm: {str(e)}")
-        return f"Error: Failed to get response. {str(e)}"
+        return f"Error: Failed to get response. Please check your API key and try again."
 
 def save_uploaded_file(uploaded_file):
     """Save uploaded file to temporary location"""
