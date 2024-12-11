@@ -10,17 +10,15 @@ import numpy as np
 import streamlit as st
 import tempfile
 import logging
-from typing import List, Optional
+from typing import List, Optional, Any, Dict
+import asyncio
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def get_groq_client():
-    """Get or create Groq client using session state"""
-    if 'groq_client' not in st.session_state:
-        st.session_state.groq_client = None
-    return st.session_state.groq_client
+# Global variables
+groq_client = None
 
 @st.cache_resource
 def load_embedding_model(model_name: str) -> SentenceTransformer:
@@ -33,17 +31,16 @@ def load_embedding_model(model_name: str) -> SentenceTransformer:
 
 def set_api_key(api_key: str) -> None:
     """Set the GROQ API key and initialize client"""
+    global groq_client
     if api_key:
         try:
-            # Create new client without proxies
-            client = Groq(api_key=api_key)
-            st.session_state.groq_client = client
+            groq_client = Groq(api_key=api_key)
             logger.info("GROQ client initialized successfully")
         except Exception as e:
             logger.error(f"Error setting API key: {str(e)}")
-            st.session_state.groq_client = None
+            groq_client = None
     else:
-        st.session_state.groq_client = None
+        groq_client = None
 
 def get_available_models() -> List[str]:
     """Get list of available LLM models"""
@@ -55,7 +52,9 @@ def read_pdf(file_path: str) -> str:
     try:
         with open(file_path, 'rb') as file:
             pdf_reader = PyPDF2.PdfReader(file)
-            return "\n".join(page.extract_text() for page in pdf_reader.pages)
+            text = "\n".join(page.extract_text() for page in pdf_reader.pages)
+            logger.info(f"Successfully read PDF: {file_path}")
+            return text
     except Exception as e:
         logger.error(f"Error reading PDF: {str(e)}")
         raise
@@ -65,7 +64,9 @@ def read_docx(file_path: str) -> str:
     """Read and extract text from DOCX file"""
     try:
         doc = docx.Document(file_path)
-        return "\n".join(para.text for para in doc.paragraphs)
+        text = "\n".join(para.text for para in doc.paragraphs)
+        logger.info(f"Successfully read DOCX: {file_path}")
+        return text
     except Exception as e:
         logger.error(f"Error reading DOCX: {str(e)}")
         raise
@@ -77,7 +78,9 @@ def read_url(url: str) -> str:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         soup = BeautifulSoup(response.content, 'html.parser')
-        return soup.get_text(separator="\n", strip=True)
+        text = soup.get_text(separator="\n", strip=True)
+        logger.info(f"Successfully read URL: {url}")
+        return text
     except Exception as e:
         logger.error(f"Error reading URL: {str(e)}")
         raise
@@ -105,14 +108,13 @@ def generate_embedding(text: str, model: SentenceTransformer) -> np.ndarray:
         logger.error(f"Error generating embedding: {str(e)}")
         raise
 
-def query_llm(prompt: str, model_name: str) -> str:
-    """Query the LLM with given prompt"""
+async def query_llm_async(prompt: str, model_name: str) -> str:
+    """Asynchronously query the LLM with given prompt"""
     try:
-        client = get_groq_client()
-        if client is None:
+        if groq_client is None:
             raise ValueError("API key not set. Please configure your API key first.")
-        
-        completion = client.chat.completions.create(
+            
+        completion = groq_client.chat.completions.create(
             model=model_name,
             messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
@@ -123,10 +125,20 @@ def query_llm(prompt: str, model_name: str) -> str:
             top_p=1
         )
         
-        return completion.choices[0].message.content
+        response = completion.choices[0].message.content
+        logger.info("Successfully generated LLM response")
+        return response
         
     except Exception as e:
         logger.error(f"Error querying LLM: {str(e)}")
+        return f"An error occurred while querying the LLM: {str(e)}"
+
+def query_llm(prompt: str, model_name: str) -> str:
+    """Synchronous wrapper for query_llm_async"""
+    try:
+        return asyncio.run(query_llm_async(prompt, model_name))
+    except Exception as e:
+        logger.error(f"Error in query_llm: {str(e)}")
         return f"An error occurred: {str(e)}"
 
 def save_uploaded_file(uploaded_file) -> str:
@@ -134,6 +146,7 @@ def save_uploaded_file(uploaded_file) -> str:
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as tmp_file:
             tmp_file.write(uploaded_file.getbuffer())
+            logger.info(f"Successfully saved uploaded file: {uploaded_file.name}")
             return tmp_file.name
     except Exception as e:
         logger.error(f"Error saving uploaded file: {str(e)}")
@@ -149,6 +162,8 @@ def create_index(embeddings: List[np.ndarray]) -> Optional[faiss.Index]:
         dimension = embeddings_array.shape[1]
         index = faiss.IndexFlatL2(dimension)
         index.add(embeddings_array.astype('float32'))
+        
+        logger.info("Successfully created FAISS index")
         return index
         
     except Exception as e:
@@ -162,6 +177,7 @@ def search_index(index: faiss.Index, query_embedding: np.ndarray, k: int = 3) ->
             return []
             
         D, I = index.search(np.array([query_embedding]).astype('float32'), k)
+        logger.info("Successfully searched index")
         return I[0]
         
     except Exception as e:
@@ -173,12 +189,19 @@ def validate_api_key_format(api_key: str) -> bool:
     try:
         if not api_key:
             return False
-        
+            
         api_key = api_key.strip()
+        
+        # Basic format validation
         if not api_key.startswith('gsk_'):
+            logger.warning("Invalid API key format: doesn't start with 'gsk_'")
             return False
+            
         if len(api_key) < 20:
+            logger.warning("Invalid API key format: too short")
             return False
+            
+        logger.info("API key format validation successful")
         return True
         
     except Exception as e:
