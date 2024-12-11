@@ -88,7 +88,7 @@ def query_llm(prompt, model_name):
 
     try:
         # Create a new client for each request
-        client = groq.client.Groq(api_key=st.session_state.api_key)
+        client = groq.Groq(api_key=st.session_state.api_key)
         
         # Make the API call
         completion = client.chat.completions.create(
