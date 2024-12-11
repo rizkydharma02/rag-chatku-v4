@@ -77,7 +77,7 @@ def login_user(db_manager: DatabaseManager, email: str, password: str) -> Dict[s
         st.session_state.user_id = user["id"]
         st.session_state.email = user["email"]
         st.session_state.token = access_token
-        st.session_state.login_time = datetime.utcnow().isoformat()
+        st.session_state.login_time = datetime.utcnow()  # Store as datetime object
         
         return {"access_token": access_token, "user": user}
     except Exception as e:
@@ -90,7 +90,16 @@ def get_current_user() -> Dict[str, Any]:
             return None
 
         if 'login_time' in st.session_state:
-            login_time = datetime.fromisoformat(st.session_state.login_time)
+            # Check if login_time is string and convert if needed
+            login_time = st.session_state.login_time
+            if isinstance(login_time, str):
+                try:
+                    login_time = datetime.fromisoformat(login_time)
+                except ValueError:
+                    login_time = datetime.utcnow()
+            elif not isinstance(login_time, datetime):
+                login_time = datetime.utcnow()
+
             if datetime.utcnow() - login_time > timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES):
                 logout_user()
                 return None
@@ -131,17 +140,23 @@ def register_user(db_manager: DatabaseManager, email: str, password: str, groq_a
         return None
 
 def logout_user():
-    keys_to_clear = ['token', 'user_id', 'email', 'api_key', 'user', 'login_time']
+    """Clean up session state during logout"""
+    keys_to_clear = [
+        'token', 'user_id', 'email', 'api_key', 'user', 
+        'login_time', 'chat_history', 'conversation_history'
+    ]
     for key in keys_to_clear:
         if key in st.session_state:
             del st.session_state[key]
 
 def validate_email(email: str) -> bool:
+    """Validate email format"""
     import re
     pattern = r'^[\w\.-]+@[\w\.-]+\.\w+$'
     return bool(re.match(pattern, email))
 
 def validate_password(password: str) -> tuple[bool, str]:
+    """Validate password requirements"""
     if len(password) < 6:
         return False, "Password must be at least 6 characters"
     if not any(c.isupper() for c in password):
@@ -153,6 +168,7 @@ def validate_password(password: str) -> tuple[bool, str]:
     return True, "Password is valid"
 
 def validate_groq_api_key(api_key: str) -> bool:
+    """Validate GROQ API key format"""
     if not api_key:
         return False
     try:
