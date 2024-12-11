@@ -1,7 +1,6 @@
 import streamlit as st
 from datetime import datetime
-import asyncio
-from typing import Optional, Dict, Any
+from typing import Optional
 from utils import set_api_key, query_llm, generate_embedding, load_embedding_model, search_index
 
 class ChatManager:
@@ -14,8 +13,6 @@ class ChatManager:
             st.session_state.chat_messages = []
         if 'processing' not in st.session_state:
             st.session_state.processing = False
-        if 'last_response' not in st.session_state:
-            st.session_state.last_response = None
             
     def add_message(self, role: str, content: str):
         """Add a message to chat history with timestamp"""
@@ -28,6 +25,9 @@ class ChatManager:
             "timestamp": datetime.now()
         }
         
+        if 'chat_messages' not in st.session_state:
+            st.session_state.chat_messages = []
+            
         st.session_state.chat_messages.append(message)
         
     def process_message(self, query: str, context: Optional[str] = None) -> str:
@@ -39,16 +39,13 @@ class ChatManager:
             st.session_state.processing = True
             prompt = f"Berdasarkan konteks berikut:\n\n{context}\n\nJawab pertanyaan ini: {query}" if context else query
             
-            try:
-                set_api_key(st.session_state.api_key)
-                response = query_llm(prompt, st.session_state.selected_model)
-                
-                if response and not response.startswith("Error"):
-                    return response
-                return "Failed to get response. Please check your API key and try again."
-                
-            except Exception as e:
-                return f"Error processing query: {str(e)}"
+            # Set API key and get response
+            set_api_key(st.session_state.api_key)
+            response = query_llm(prompt, st.session_state.selected_model)
+            
+            if not response.startswith("An error occurred"):
+                return response
+            return "Failed to get response. Please check your API key and try again."
             
         except Exception as e:
             return f"Error: {str(e)}"
@@ -71,7 +68,7 @@ class ChatManager:
     def handle_chat_interface(self):
         """Main chat interface handler"""
         # Display chat history
-        for msg in st.session_state.chat_messages:
+        for msg in st.session_state.get('chat_messages', []):
             with st.container():
                 if msg['role'] == 'user':
                     st.write(f"**You**: {msg['content']}")
@@ -90,22 +87,22 @@ class ChatManager:
                 submit_button = st.form_submit_button("Kirim", use_container_width=True)
 
             if submit_button and user_input:
+                # Add user message
                 self.add_message("user", user_input)
                 
                 try:
                     # Get context if available
                     context = self.get_context_for_query(user_input)
                     
-                    # Process message
+                    # Process message and get response
                     response = self.process_message(user_input, context)
-                        
-                    # Add response to chat
+                    
+                    # Add assistant message
                     if response:
                         self.add_message("assistant", response)
-                        st.session_state.last_response = response
-                        
+                    
                     # Force refresh
-                    st.experimental_rerun()
+                    st.rerun()
                     
                 except Exception as e:
                     st.error(f"Error processing message: {str(e)}")
@@ -115,13 +112,12 @@ def initialize_chat_state():
     default_states = {
         'chat_messages': [],
         'processing': False,
-        'last_response': None,
         'documents': [],
         'embeddings': [],
         'index': None,
         'processed_files': [],
         'processed_urls': [],
-        'selected_model': "mixtral-8x7b-32768",  # default model
+        'selected_model': "mixtral-8x7b-32768",
         'selected_embedding_model': "all-MiniLM-L6-v2",
         'api_key': "",
         'clear_url': False
