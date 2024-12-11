@@ -109,10 +109,10 @@ def read_url(url):
         raise
 
 @st.cache_data(show_spinner=False)
-def generate_embedding(text, model):
+def generate_embedding(text, _model):
     """Generate embedding for text using provided model"""
     try:
-        return model.encode(text)
+        return _model.encode(text)
     except Exception as e:
         logger.error(f"Error generating embedding: {str(e)}")
         raise
