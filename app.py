@@ -1,9 +1,7 @@
 import streamlit as st
 import time
 from datetime import datetime
-from typing import Optional
 
-# Must be the first Streamlit command
 st.set_page_config(
     page_title="Chatku AI",
     page_icon="🤖",
@@ -11,7 +9,6 @@ st.set_page_config(
 )
 
 import os
-from chat_manager import ChatManager, initialize_chat_state
 from utils import (
     load_embedding_model, read_file, read_url, generate_embedding,
     save_uploaded_file, create_index, search_index,
@@ -19,9 +16,9 @@ from utils import (
 )
 from db_utils import DatabaseManager
 from auth_utils import (
-    login_user, register_user, get_current_user, logout_user,
-    validate_groq_api_key
+    login_user, register_user, get_current_user, logout_user
 )
+from chat_manager import ChatManager, initialize_chat_state
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -83,6 +80,10 @@ def render_login_page():
                     st.error("GROQ API Key wajib diisi")
                 elif signup_email and signup_password:
                     try:
+                        if not validate_api_key_format(signup_groq_api):
+                            st.error("Format GROQ API Key tidak valid")
+                            return
+                            
                         user = register_user(
                             st.session_state.db_manager,
                             signup_email,
