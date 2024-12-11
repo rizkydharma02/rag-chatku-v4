@@ -59,7 +59,7 @@ def set_api_key(api_key):
 
 def get_available_models():
     """Get list of available models"""
-    return ["mixtral-8x7b-32768", "gemma-7b-it", "llama2-70b-chat"]
+    return ["mixtral-8x7b-32768", "gemma-7b-it", "llama3-8b-8192"]
 
 def read_pdf(file_path):
     """Read text from PDF file"""
