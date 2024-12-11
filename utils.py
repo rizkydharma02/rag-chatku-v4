@@ -87,9 +87,14 @@ def query_llm(prompt, model_name):
         return "Error: API key not found. Please configure your API key first."
 
     try:
-        # Initialize the Groq client (ensure no unsupported arguments)
+        # Initialize Groq client
+        logger.info("Initializing Groq client...")
         client = groq.Groq(api_key=st.session_state.api_key)
-        
+
+        # Debug supported arguments
+        import inspect
+        logger.info(f"Groq client args: {inspect.signature(groq.Groq)}")
+
         # Make the API call
         completion = client.chat.completions.create(
             model=model_name,
@@ -100,16 +105,18 @@ def query_llm(prompt, model_name):
             temperature=0.7,
             max_tokens=2048
         )
-        
+
         # Validate response format
         if hasattr(completion.choices[0], 'message'):
             return completion.choices[0].message.content
         else:
             return "Error: Unexpected response format from API"
-            
+
     except TypeError as e:
-        logger.error(f"TypeError in query_llm: {str(e)}. Ensure the API client is initialized correctly.")
-        return "Error: Invalid API client initialization. Please check the API documentation."
+        logger.error(f"TypeError in query_llm: {str(e)}")
+        logger.info("Please verify the API client initialization. Check for unexpected arguments.")
+        return "Error: Client initialization failed. Please check the API documentation."
+
     except Exception as e:
         logger.error(f"Error in query_llm: {str(e)}")
         return "Error: Failed to get response. Please check your API key and try again."
