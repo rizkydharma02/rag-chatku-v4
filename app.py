@@ -242,12 +242,18 @@ def handle_sidebar():
 
         if st.button("Hapus Semua Data"):
             try:
+                # Reset document processing data
                 st.session_state.documents = []
                 st.session_state.embeddings = []
                 st.session_state.index = None
                 st.session_state.processed_files = []
                 st.session_state.processed_urls = []
-                st.success("Semua data berhasil dihapus!")
+                
+                # Reset chat history
+                if 'chat_messages' in st.session_state:
+                    st.session_state.chat_messages = []
+                
+                st.success("Semua data dan riwayat chat berhasil dihapus!")
                 st.rerun()
             except Exception as e:
                 st.error(f"Gagal menghapus data: {str(e)}")
