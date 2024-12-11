@@ -9,22 +9,58 @@ import faiss
 import numpy as np
 import streamlit as st
 import tempfile
+import logging
 
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Global variable for Groq client
 groq_client = None
 
 @st.cache_resource
 def load_embedding_model(model_name):
     return SentenceTransformer(model_name)
 
-def set_api_key(api_key):
+def initialize_groq_client(api_key):
+    """Initialize Groq client with API key"""
     global groq_client
     if api_key:
         try:
+            # Create new client instance
             groq_client = Groq(api_key=api_key)
+            # Test the client with a simple query
+            response = groq_client.chat.completions.create(
+                model="mixtral-8x7b-32768",
+                messages=[{"role": "user", "content": "test"}],
+                max_tokens=1
+            )
+            logger.info("Groq client initialized successfully")
+            return True
         except Exception as e:
-            print(f"Error setting API key: {str(e)}")
-    else:
-        groq_client = None
+            logger.error(f"Failed to initialize Groq client: {str(e)}")
+            groq_client = None
+            return False
+    return False
+
+def set_api_key(api_key):
+    """Set API key and initialize client"""
+    if not api_key:
+        logger.warning("No API key provided")
+        return False
+        
+    try:
+        st.session_state.api_key = api_key
+        success = initialize_groq_client(api_key)
+        if success:
+            logger.info("API key set successfully")
+            return True
+        else:
+            logger.warning("Failed to initialize client with provided API key")
+            return False
+    except Exception as e:
+        logger.error(f"Error setting API key: {str(e)}")
+        return False
 
 def get_available_models():
     return ["mixtral-8x7b-32768", "gemma-7b-it", "llama3-8b-8192"]
@@ -63,6 +99,7 @@ def read_file(file_path):
     else:
         raise ValueError("Unsupported file type")
 
+@st.cache_data(show_spinner=False)
 def generate_embedding(text, model):
     try:
         return model.encode(text)
@@ -70,10 +107,19 @@ def generate_embedding(text, model):
         raise Exception(f"Error generating embedding: {str(e)}")
 
 def query_llm(prompt, model_name):
+    """Query the LLM with given prompt"""
+    global groq_client
+    
+    if not st.session_state.get('api_key'):
+        return "Error: API key not found. Please configure your API key first."
+        
     try:
+        # Reinitialize client if needed
         if groq_client is None:
-            raise ValueError("Please enter a valid API key first.")
-            
+            if not initialize_groq_client(st.session_state.api_key):
+                return "Error: Failed to initialize Groq client. Please check your API key."
+        
+        # Create completion
         completion = groq_client.chat.completions.create(
             model=model_name,
             messages=[
@@ -85,8 +131,12 @@ def query_llm(prompt, model_name):
         )
         
         return completion.choices[0].message.content
+        
     except Exception as e:
-        return f"An error occurred while querying the LLM: {str(e)}"
+        logger.error(f"Error in query_llm: {str(e)}")
+        # Try to reinitialize client on error
+        groq_client = None
+        return f"Error: Failed to get response from Groq API. Please check your API key and try again."
 
 def save_uploaded_file(uploaded_file):
     try:
@@ -105,7 +155,6 @@ def create_index(embeddings):
         dimension = embeddings_array.shape[1]
         index = faiss.IndexFlatL2(dimension)
         index.add(embeddings_array.astype('float32'))
-        
         return index
     except Exception as e:
         raise Exception(f"Error creating index: {str(e)}")
@@ -121,6 +170,7 @@ def search_index(index, query_embedding, k=3):
         raise Exception(f"Error searching index: {str(e)}")
 
 def validate_api_key_format(api_key: str) -> bool:
+    """Validate GROQ API key format"""
     try:
         if not api_key:
             return False
@@ -128,12 +178,14 @@ def validate_api_key_format(api_key: str) -> bool:
         api_key = api_key.strip()
         
         if not api_key.startswith('gsk_'):
+            logger.warning("Invalid API key format: doesn't start with 'gsk_'")
             return False
             
         if len(api_key) < 20:
+            logger.warning("Invalid API key format: too short")
             return False
             
         return True
     except Exception as e:
-        print(f"Error validating API key format: {str(e)}")
+        logger.error(f"Error validating API key format: {str(e)}")
         return False
