@@ -9,6 +9,7 @@ import numpy as np
 import streamlit as st
 import tempfile
 import logging
+from requests.exceptions import RequestException
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -16,6 +17,10 @@ logger = logging.getLogger(__name__)
 
 # Global variable for API key
 GROQ_API_URL = "https://api.groq.com/v1/chat/completions"
+
+# Configure requests session
+session = requests.Session()
+session.trust_env = False  # Disable environment-based proxy settings
 
 @st.cache_resource
 def load_embedding_model(model_name):
@@ -66,7 +71,7 @@ def read_file(file_path):
 def read_url(url):
     """Fetch and read text from URL"""
     try:
-        response = requests.get(url)
+        response = session.get(url, verify=True)
         response.raise_for_status()
         soup = BeautifulSoup(response.content, 'html.parser')
         return soup.get_text()
@@ -84,16 +89,19 @@ def generate_embedding(text, model):
         raise
 
 def query_llm(prompt, model_name):
-    """Query LLM using Groq API directly with requests"""
+    """Query LLM using Groq API with direct HTTP request"""
     if not st.session_state.get("api_key"):
         return "Error: API key not found. Please configure your API key first."
 
     try:
+        # Setup request headers
         headers = {
             "Authorization": f"Bearer {st.session_state.api_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "Accept": "application/json"
         }
         
+        # Setup request payload
         data = {
             "model": model_name,
             "messages": [
@@ -104,18 +112,36 @@ def query_llm(prompt, model_name):
             "max_tokens": 2048
         }
         
-        response = requests.post(GROQ_API_URL, headers=headers, json=data)
+        # Make request using session
+        response = session.post(
+            GROQ_API_URL,
+            headers=headers,
+            json=data,
+            timeout=60,
+            verify=True
+        )
+        
+        # Check for HTTP errors
         response.raise_for_status()
         
+        # Parse response
         result = response.json()
         if "choices" in result and len(result["choices"]) > 0:
-            return result["choices"][0]["message"]["content"]
-        else:
-            return "Error: Unexpected response format from API"
+            message = result["choices"][0].get("message", {})
+            if "content" in message:
+                return message["content"]
+                
+        return "Error: Unexpected response format from API"
             
+    except requests.exceptions.Timeout:
+        logger.error("Request timed out")
+        return "Error: Request timed out. Please try again."
     except requests.exceptions.HTTPError as e:
         logger.error(f"HTTP Error in query_llm: {str(e)}")
-        return f"Error: API request failed. Please check your API key and try again."
+        return f"Error: API request failed (HTTP {response.status_code}). Please check your API key."
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Request Error in query_llm: {str(e)}")
+        return "Error: Failed to connect to API. Please check your internet connection."
     except Exception as e:
         logger.error(f"Error in query_llm: {str(e)}")
         return f"Error: Failed to get response. {str(e)}"
