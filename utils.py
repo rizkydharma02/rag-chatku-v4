@@ -15,8 +15,8 @@ from groq import Groq
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Global Groq client
-_groq_client = None
+# Initialize Groq client as None
+groq_client = None
 
 @st.cache_resource
 def load_embedding_model(model_name):
@@ -24,17 +24,16 @@ def load_embedding_model(model_name):
     return SentenceTransformer(model_name)
 
 def set_api_key(api_key):
-    """Store API key in session state and initialize client"""
-    global _groq_client
+    """Store API key in session state"""
+    global groq_client
     if api_key:
-        st.session_state.api_key = api_key
-        # Initialize new Groq client
         try:
-            _groq_client = Groq()
-            _groq_client.api_key = api_key
+            os.environ["GROQ_API_KEY"] = api_key
+            st.session_state.api_key = api_key
+            groq_client = Groq()
             return True
         except Exception as e:
-            logger.error(f"Error initializing Groq client: {str(e)}")
+            logger.error(f"Error setting API key: {str(e)}")
             return False
     return False
 
@@ -94,19 +93,18 @@ def generate_embedding(text, model):
 
 def query_llm(prompt, model_name):
     """Query LLM using Groq"""
-    global _groq_client
+    global groq_client
     
     if not st.session_state.get("api_key"):
         return "Error: API key not found. Please configure your API key first."
 
     try:
-        # Initialize client if needed
-        if _groq_client is None:
-            _groq_client = Groq()
-            _groq_client.api_key = st.session_state.api_key
-
-        # Create completion
-        response = _groq_client.chat.completions.create(
+        # Ensure client is initialized
+        if groq_client is None:
+            groq_client = Groq()
+        
+        # Make the API call
+        response = groq_client.chat.completions.create(
             model=model_name,
             messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
@@ -116,13 +114,12 @@ def query_llm(prompt, model_name):
             max_tokens=2048
         )
         
-        # Return the response content
         return response.choices[0].message.content
         
     except Exception as e:
         logger.error(f"Error in query_llm: {str(e)}")
         # Reset client on error
-        _groq_client = None
+        groq_client = None
         return f"Error: Failed to get response. Please check your API key and try again."
 
 def save_uploaded_file(uploaded_file):
