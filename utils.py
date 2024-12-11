@@ -87,7 +87,7 @@ def query_llm(prompt, model_name):
         return "Error: API key not found. Please configure your API key first."
 
     try:
-        # Create a new client for each request
+        # Initialize the Groq client (ensure no unsupported arguments)
         client = groq.Groq(api_key=st.session_state.api_key)
         
         # Make the API call
@@ -101,18 +101,19 @@ def query_llm(prompt, model_name):
             max_tokens=2048
         )
         
-        # Check for valid response
+        # Validate response format
         if hasattr(completion.choices[0], 'message'):
             return completion.choices[0].message.content
         else:
             return "Error: Unexpected response format from API"
             
     except TypeError as e:
-        logger.error(f"TypeError in query_llm: {str(e)}. Please verify the API client initialization.")
-        return "Error: Client initialization failed. Please check the API documentation."
+        logger.error(f"TypeError in query_llm: {str(e)}. Ensure the API client is initialized correctly.")
+        return "Error: Invalid API client initialization. Please check the API documentation."
     except Exception as e:
         logger.error(f"Error in query_llm: {str(e)}")
         return "Error: Failed to get response. Please check your API key and try again."
+
 
 
 def save_uploaded_file(uploaded_file):
