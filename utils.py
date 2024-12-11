@@ -9,14 +9,24 @@ import faiss
 import numpy as np
 import streamlit as st
 import tempfile
+import time
+import torch
 
-# Global variable for Groq client
+# Global variables
 groq_client = None
 
-@st.cache_resource
+@st.cache_resource(show_spinner=False)
 def load_embedding_model(model_name):
-    """Load sentence transformer model"""
-    return SentenceTransformer(model_name)
+    """Load sentence transformer model with better error handling"""
+    try:
+        # Ensure CUDA is available if needed
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        model = SentenceTransformer(model_name, device=device)
+        return model
+    except Exception as e:
+        print(f"Error loading embedding model: {str(e)}")
+        # Return None instead of raising error to handle gracefully
+        return None
 
 def set_api_key(api_key):
     """Set API key with basic validation"""
@@ -34,58 +44,14 @@ def get_available_models():
     """Get list of available models"""
     return ["mixtral-8x7b-32768", "gemma-7b-it", "llama3-8b-8192"]
 
-def read_pdf(file_path):
-    """Read and extract text from PDF file"""
-    try:
-        with open(file_path, 'rb') as file:
-            pdf_reader = PyPDF2.PdfReader(file)
-            text = "\n".join(page.extract_text() for page in pdf_reader.pages)
-            return text
-    except Exception as e:
-        raise Exception(f"Error reading PDF: {str(e)}")
-
-def read_docx(file_path):
-    """Read and extract text from DOCX file"""
-    try:
-        doc = docx.Document(file_path)
-        text = "\n".join(para.text for para in doc.paragraphs)
-        return text
-    except Exception as e:
-        raise Exception(f"Error reading DOCX: {str(e)}")
-
-@st.cache_data
-def read_url(url):
-    """Read and extract text from URL"""
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.content, 'html.parser')
-        return soup.get_text()
-    except Exception as e:
-        raise Exception(f"Error reading URL: {str(e)}")
-
-def read_file(file_path):
-    """Read file based on extension"""
-    _, file_extension = os.path.splitext(file_path)
-    if file_extension.lower() == '.pdf':
-        return read_pdf(file_path)
-    elif file_extension.lower() == '.docx':
-        return read_docx(file_path)
-    else:
-        raise ValueError("Unsupported file type")
-
-def generate_embedding(text, model):
-    """Generate embeddings from text"""
-    try:
-        return model.encode(text)
-    except Exception as e:
-        raise Exception(f"Error generating embedding: {str(e)}")
-
 def query_llm(prompt, model_name):
-    """Query LLM with simplified reliable handling"""
+    """Query LLM with improved reliability"""
     try:
         if not groq_client:
             raise ValueError("GROQ client not initialized")
+
+        if not prompt or not prompt.strip():
+            raise ValueError("Empty prompt")
 
         completion = groq_client.chat.completions.create(
             model=model_name,
@@ -95,50 +61,124 @@ def query_llm(prompt, model_name):
             ],
             temperature=0.7,
             max_tokens=1000,
-            stream=False  # Disable streaming for production stability
+            stream=False  # Disable streaming for better reliability
         )
 
         if not completion.choices:
             raise ValueError("No response from API")
 
-        response = completion.choices[0].message.content
-        return response if response else None
+        return completion.choices[0].message.content
 
     except Exception as e:
         print(f"Error in query_llm: {str(e)}")
         return None
 
-def save_uploaded_file(uploaded_file):
-    """Save uploaded file to temporary location"""
+def generate_embedding(text, model):
+    """Generate embeddings with improved handling"""
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as tmp_file:
-            tmp_file.write(uploaded_file.getbuffer())
-            return tmp_file.name
+        if not model:
+            print("Embedding model not initialized")
+            return None
+
+        if not text or not text.strip():
+            print("Empty text input")
+            return None
+
+        # Generate embedding
+        embedding = model.encode(text.strip(), convert_to_tensor=False)
+        return embedding
+
     except Exception as e:
-        raise Exception(f"Error saving uploaded file: {str(e)}")
+        print(f"Error generating embedding: {str(e)}")
+        return None
 
 def create_index(embeddings):
-    """Create FAISS index from embeddings"""
+    """Create FAISS index with better validation"""
     try:
-        if not embeddings:
+        if not embeddings or len(embeddings) == 0:
             return None
+
         embeddings_array = np.array(embeddings)
         dimension = embeddings_array.shape[1]
         index = faiss.IndexFlatL2(dimension)
         index.add(embeddings_array.astype('float32'))
         return index
+
     except Exception as e:
-        raise Exception(f"Error creating index: {str(e)}")
+        print(f"Error creating index: {str(e)}")
+        return None
 
 def search_index(index, query_embedding, k=3):
-    """Search for similar documents in FAISS index"""
+    """Search index with improved validation"""
     try:
-        if index is None:
+        if index is None or query_embedding is None:
             return []
+
         D, I = index.search(np.array([query_embedding]).astype('float32'), k)
         return I[0]
+
     except Exception as e:
-        raise Exception(f"Error searching index: {str(e)}")
+        print(f"Error searching index: {str(e)}")
+        return []
+
+def read_pdf(file_path):
+    """Read PDF with improved error handling"""
+    try:
+        with open(file_path, 'rb') as file:
+            pdf_reader = PyPDF2.PdfReader(file)
+            text = ""
+            for page in pdf_reader.pages:
+                text += page.extract_text() + "\n"
+            return text.strip()
+    except Exception as e:
+        print(f"Error reading PDF: {str(e)}")
+        return None
+
+def read_docx(file_path):
+    """Read DOCX with improved error handling"""
+    try:
+        doc = docx.Document(file_path)
+        text = "\n".join([paragraph.text for paragraph in doc.paragraphs])
+        return text.strip()
+    except Exception as e:
+        print(f"Error reading DOCX: {str(e)}")
+        return None
+
+@st.cache_data(show_spinner=False)
+def read_url(url):
+    """Read URL content with improved error handling"""
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.content, 'html.parser')
+        return soup.get_text().strip()
+    except Exception as e:
+        print(f"Error reading URL: {str(e)}")
+        return None
+
+def read_file(file_path):
+    """Read file based on extension"""
+    try:
+        _, file_extension = os.path.splitext(file_path)
+        if file_extension.lower() == '.pdf':
+            return read_pdf(file_path)
+        elif file_extension.lower() == '.docx':
+            return read_docx(file_path)
+        else:
+            raise ValueError("Unsupported file type")
+    except Exception as e:
+        print(f"Error reading file: {str(e)}")
+        return None
+
+def save_uploaded_file(uploaded_file):
+    """Save uploaded file with better error handling"""
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as tmp_file:
+            tmp_file.write(uploaded_file.getbuffer())
+            return tmp_file.name
+    except Exception as e:
+        print(f"Error saving uploaded file: {str(e)}")
+        return None
 
 def validate_api_key(api_key: str) -> bool:
     """Validate API key format"""
@@ -154,14 +194,3 @@ def validate_api_key(api_key: str) -> bool:
     except Exception as e:
         print(f"Error validating API key: {str(e)}")
         return False
-
-# Helper function for retrying API calls
-def retry_api_call(func, max_retries=3, delay=1):
-    """Retry API calls with exponential backoff"""
-    for attempt in range(max_retries):
-        try:
-            return func()
-        except Exception as e:
-            if attempt == max_retries - 1:
-                raise e
-            time.sleep(delay * (2 ** attempt))
