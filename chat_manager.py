@@ -1,7 +1,6 @@
 import streamlit as st
 from datetime import datetime
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, Dict, Any
 from utils import set_api_key, query_llm, generate_embedding, load_embedding_model, search_index
 
@@ -31,7 +30,7 @@ class ChatManager:
         
         st.session_state.chat_messages.append(message)
         
-    async def process_message(self, query: str, context: Optional[str] = None) -> str:
+    def process_message(self, query: str, context: Optional[str] = None) -> str:
         """Process a message and get response from LLM"""
         try:
             if not st.session_state.get('api_key'):
@@ -40,20 +39,16 @@ class ChatManager:
             st.session_state.processing = True
             prompt = f"Berdasarkan konteks berikut:\n\n{context}\n\nJawab pertanyaan ini: {query}" if context else query
             
-            def run_query():
-                try:
-                    set_api_key(st.session_state.api_key)
-                    return query_llm(prompt, st.session_state.selected_model)
-                except Exception as e:
-                    return f"Error processing query: {str(e)}"
-            
-            with ThreadPoolExecutor() as executor:
-                loop = asyncio.get_event_loop()
-                response = await loop.run_in_executor(executor, run_query)
+            try:
+                set_api_key(st.session_state.api_key)
+                response = query_llm(prompt, st.session_state.selected_model)
                 
-            if response and not response.startswith("Error"):
-                return response
-            return "Failed to get response. Please check your API key and try again."
+                if response and not response.startswith("Error"):
+                    return response
+                return "Failed to get response. Please check your API key and try again."
+                
+            except Exception as e:
+                return f"Error processing query: {str(e)}"
             
         except Exception as e:
             return f"Error: {str(e)}"
@@ -97,28 +92,23 @@ class ChatManager:
             if submit_button and user_input:
                 self.add_message("user", user_input)
                 
-                async def process_and_update():
-                    try:
-                        # Get context if available
-                        context = self.get_context_for_query(user_input)
+                try:
+                    # Get context if available
+                    context = self.get_context_for_query(user_input)
+                    
+                    # Process message
+                    response = self.process_message(user_input, context)
                         
-                        # Process message
-                        with st.spinner("Menghasilkan respons..."):
-                            response = await self.process_message(user_input, context)
-                            
-                        # Add response to chat
-                        if response:
-                            self.add_message("assistant", response)
-                            st.session_state.last_response = response
-                            
-                        # Force refresh
-                        st.rerun()
+                    # Add response to chat
+                    if response:
+                        self.add_message("assistant", response)
+                        st.session_state.last_response = response
                         
-                    except Exception as e:
-                        st.error(f"Error processing message: {str(e)}")
-
-                # Run async processing
-                asyncio.run(process_and_update())
+                    # Force refresh
+                    st.experimental_rerun()
+                    
+                except Exception as e:
+                    st.error(f"Error processing message: {str(e)}")
                 
 def initialize_chat_state():
     """Initialize all necessary session state variables"""

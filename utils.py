@@ -11,7 +11,7 @@ import streamlit as st
 import tempfile
 import logging
 from typing import List, Optional, Any, Dict
-from concurrent.futures import ThreadPoolExecutor
+import asyncio
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -44,9 +44,9 @@ def set_api_key(api_key: str) -> None:
 
 def get_available_models() -> List[str]:
     """Get list of available LLM models"""
-    return ["mixtral-8x7b-32768", "gemma-7b-it", "llama3-8b-8192"]
+    return ["mixtral-8x7b-32768", "gemma-7b-it", "llama2-70b-chat"]
 
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def read_pdf(file_path: str) -> str:
     """Read and extract text from PDF file"""
     try:
@@ -59,7 +59,7 @@ def read_pdf(file_path: str) -> str:
         logger.error(f"Error reading PDF: {str(e)}")
         raise
 
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def read_docx(file_path: str) -> str:
     """Read and extract text from DOCX file"""
     try:
@@ -71,7 +71,7 @@ def read_docx(file_path: str) -> str:
         logger.error(f"Error reading DOCX: {str(e)}")
         raise
 
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def read_url(url: str) -> str:
     """Fetch and extract text from URL"""
     try:
@@ -99,7 +99,7 @@ def read_file(file_path: str) -> str:
         logger.error(f"Error reading file: {str(e)}")
         raise
 
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def generate_embedding(text: str, model: SentenceTransformer) -> np.ndarray:
     """Generate embedding for text using specified model"""
     try:
@@ -108,8 +108,8 @@ def generate_embedding(text: str, model: SentenceTransformer) -> np.ndarray:
         logger.error(f"Error generating embedding: {str(e)}")
         raise
 
-def query_llm(prompt: str, model_name: str) -> str:
-    """Query the LLM with given prompt"""
+async def query_llm_async(prompt: str, model_name: str) -> str:
+    """Asynchronously query the LLM with given prompt"""
     try:
         if groq_client is None:
             raise ValueError("API key not set. Please configure your API key first.")
@@ -122,8 +122,7 @@ def query_llm(prompt: str, model_name: str) -> str:
             ],
             temperature=0.5,
             max_tokens=1000,
-            top_p=1,
-            stream=False
+            top_p=1
         )
         
         response = completion.choices[0].message.content
@@ -133,6 +132,14 @@ def query_llm(prompt: str, model_name: str) -> str:
     except Exception as e:
         logger.error(f"Error querying LLM: {str(e)}")
         return f"An error occurred while querying the LLM: {str(e)}"
+
+def query_llm(prompt: str, model_name: str) -> str:
+    """Synchronous wrapper for query_llm_async"""
+    try:
+        return asyncio.run(query_llm_async(prompt, model_name))
+    except Exception as e:
+        logger.error(f"Error in query_llm: {str(e)}")
+        return f"An error occurred: {str(e)}"
 
 def save_uploaded_file(uploaded_file) -> str:
     """Save uploaded file to temporary location"""
