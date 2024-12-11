@@ -22,11 +22,11 @@ def query_llm(prompt: str, model_name: str) -> str:
         return "Error: API key not found. Please configure your API key first."
         
     try:
-        # Create a new client instance for each query
-        client = Groq()
-        client.api_key = st.session_state.api_key
+        # Initialize Groq client directly with API key
+        groq_client = Groq(api_key=st.session_state.api_key)
         
-        completion = client.chat.completions.create(
+        # Create chat completion
+        completion = groq_client.chat.completions.create(
             model=model_name,
             messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
@@ -36,6 +36,7 @@ def query_llm(prompt: str, model_name: str) -> str:
             max_tokens=1024
         )
         
+        # Extract and return response
         return completion.choices[0].message.content
     except Exception as e:
         logger.error(f"Error in query_llm: {str(e)}")
