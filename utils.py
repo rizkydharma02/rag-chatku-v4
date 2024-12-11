@@ -30,7 +30,8 @@ def set_api_key(api_key):
         try:
             os.environ["GROQ_API_KEY"] = api_key
             st.session_state.api_key = api_key
-            groq_client = Groq()
+            # Initialize Groq client with only the required parameters
+            groq_client = Groq(api_key=api_key)
             return True
         except Exception as e:
             logger.error(f"Error setting API key: {str(e)}")
@@ -99,11 +100,11 @@ def query_llm(prompt, model_name):
         return "Error: API key not found. Please configure your API key first."
 
     try:
-        # Ensure client is initialized
+        # Ensure client is initialized with API key
         if groq_client is None:
-            groq_client = Groq()
+            groq_client = Groq(api_key=st.session_state.api_key)
         
-        # Make the API call
+        # Make the API call with only required parameters
         response = groq_client.chat.completions.create(
             model=model_name,
             messages=[
