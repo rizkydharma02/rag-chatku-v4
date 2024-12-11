@@ -9,11 +9,13 @@ import numpy as np
 import streamlit as st
 import tempfile
 import logging
-import groq
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Global variable for API key
+GROQ_API_URL = "https://api.groq.com/v1/chat/completions"
 
 @st.cache_resource
 def load_embedding_model(model_name):
@@ -82,45 +84,41 @@ def generate_embedding(text, model):
         raise
 
 def query_llm(prompt, model_name):
-    """Query LLM using Groq's API"""
+    """Query LLM using Groq API directly with requests"""
     if not st.session_state.get("api_key"):
         return "Error: API key not found. Please configure your API key first."
 
     try:
-        # Atur konfigurasi manual untuk memastikan proxies tidak diteruskan
-        client = groq.Groq(
-            api_key=st.session_state.api_key,  # API key saja
-            http_client=None  # Pastikan klien HTTP default digunakan
-        )
+        headers = {
+            "Authorization": f"Bearer {st.session_state.api_key}",
+            "Content-Type": "application/json"
+        }
         
-        logger.info("Groq client initialized successfully.")
-
-        # Panggil API Groq
-        completion = client.chat.completions.create(
-            model=model_name,
-            messages=[
+        data = {
+            "model": model_name,
+            "messages": [
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.7,
-            max_tokens=2048
-        )
+            "temperature": 0.7,
+            "max_tokens": 2048
+        }
         
-        # Validasi respons
-        if hasattr(completion.choices[0], 'message'):
-            return completion.choices[0].message.content
+        response = requests.post(GROQ_API_URL, headers=headers, json=data)
+        response.raise_for_status()
+        
+        result = response.json()
+        if "choices" in result and len(result["choices"]) > 0:
+            return result["choices"][0]["message"]["content"]
         else:
             return "Error: Unexpected response format from API"
-    
-    except TypeError as e:
-        logger.error(f"TypeError in query_llm: {str(e)}. Ensure no unexpected arguments are passed.")
-        return "Error: Invalid API client initialization. Please check the API documentation."
-    
+            
+    except requests.exceptions.HTTPError as e:
+        logger.error(f"HTTP Error in query_llm: {str(e)}")
+        return f"Error: API request failed. Please check your API key and try again."
     except Exception as e:
         logger.error(f"Error in query_llm: {str(e)}")
-        return "Error: Failed to get response. Please check your API key and try again."
-
-
+        return f"Error: Failed to get response. {str(e)}"
 
 def save_uploaded_file(uploaded_file):
     """Save uploaded file to temporary location"""
