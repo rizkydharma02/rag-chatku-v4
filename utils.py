@@ -9,18 +9,11 @@ import numpy as np
 import streamlit as st
 import tempfile
 import logging
-from requests.exceptions import RequestException
+from groq import Groq
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Global variable for API key
-GROQ_API_URL = "https://api.groq.com/v1/chat/completions"
-
-# Configure requests session
-session = requests.Session()
-session.trust_env = False  # Disable environment-based proxy settings
 
 @st.cache_resource
 def load_embedding_model(model_name):
@@ -36,7 +29,7 @@ def set_api_key(api_key):
 
 def get_available_models():
     """Get list of available models"""
-    return ["mixtral-8x7b-32768", "gemma-7b-it", "llama3-8b-8192"]
+    return ["mixtral-8x7b-32768", "gemma-7b-it", "llama2-70b-chat"]
 
 def read_pdf(file_path):
     """Read text from PDF file"""
@@ -71,7 +64,7 @@ def read_file(file_path):
 def read_url(url):
     """Fetch and read text from URL"""
     try:
-        response = session.get(url, verify=True)
+        response = requests.get(url)
         response.raise_for_status()
         soup = BeautifulSoup(response.content, 'html.parser')
         return soup.get_text()
@@ -89,62 +82,31 @@ def generate_embedding(text, model):
         raise
 
 def query_llm(prompt, model_name):
-    """Query LLM using Groq API with direct HTTP request"""
+    """Query LLM using Groq"""
     if not st.session_state.get("api_key"):
         return "Error: API key not found. Please configure your API key first."
 
     try:
-        # Setup request headers
-        headers = {
-            "Authorization": f"Bearer {st.session_state.api_key}",
-            "Content-Type": "application/json",
-            "Accept": "application/json"
-        }
+        # Create a new client for each request with just the API key
+        client = Groq(api_key=st.session_state.api_key)
         
-        # Setup request payload
-        data = {
-            "model": model_name,
-            "messages": [
+        # Create completion
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": prompt}
             ],
-            "temperature": 0.7,
-            "max_tokens": 2048
-        }
-        
-        # Make request using session
-        response = session.post(
-            GROQ_API_URL,
-            headers=headers,
-            json=data,
-            timeout=60,
-            verify=True
+            temperature=0.7,
+            max_tokens=2048
         )
         
-        # Check for HTTP errors
-        response.raise_for_status()
+        # Return the response content
+        return response.choices[0].message.content
         
-        # Parse response
-        result = response.json()
-        if "choices" in result and len(result["choices"]) > 0:
-            message = result["choices"][0].get("message", {})
-            if "content" in message:
-                return message["content"]
-                
-        return "Error: Unexpected response format from API"
-            
-    except requests.exceptions.Timeout:
-        logger.error("Request timed out")
-        return "Error: Request timed out. Please try again."
-    except requests.exceptions.HTTPError as e:
-        logger.error(f"HTTP Error in query_llm: {str(e)}")
-        return f"Error: API request failed (HTTP {response.status_code}). Please check your API key."
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Request Error in query_llm: {str(e)}")
-        return "Error: Failed to connect to API. Please check your internet connection."
     except Exception as e:
         logger.error(f"Error in query_llm: {str(e)}")
-        return f"Error: Failed to get response. {str(e)}"
+        return f"Error: Failed to get response. Please check your API key and try again."
 
 def save_uploaded_file(uploaded_file):
     """Save uploaded file to temporary location"""
