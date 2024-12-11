@@ -101,14 +101,19 @@ def query_llm(prompt, model_name):
             max_tokens=2048
         )
         
+        # Check for valid response
         if hasattr(completion.choices[0], 'message'):
             return completion.choices[0].message.content
         else:
             return "Error: Unexpected response format from API"
             
+    except TypeError as e:
+        logger.error(f"TypeError in query_llm: {str(e)}. Please verify the API client initialization.")
+        return "Error: Client initialization failed. Please check the API documentation."
     except Exception as e:
         logger.error(f"Error in query_llm: {str(e)}")
-        return f"Error: Failed to get response. Please check your API key and try again."
+        return "Error: Failed to get response. Please check your API key and try again."
+
 
 def save_uploaded_file(uploaded_file):
     """Save uploaded file to temporary location"""
