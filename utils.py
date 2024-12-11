@@ -10,28 +10,53 @@ import streamlit as st
 import tempfile
 import logging
 from groq import Groq
+import httpx
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize Groq client as None
+# Initialize Groq client and httpx client as None
 groq_client = None
+http_client = None
 
 @st.cache_resource
 def load_embedding_model(model_name):
     """Load and cache the embedding model"""
     return SentenceTransformer(model_name)
 
+def init_http_client():
+    """Initialize httpx client with proxy configuration"""
+    global http_client
+    try:
+        # Create httpx client with default timeout and no proxy verification
+        http_client = httpx.Client(
+            timeout=30.0,
+            verify=False,
+            follow_redirects=True
+        )
+        return http_client
+    except Exception as e:
+        logger.error(f"Error initializing http client: {str(e)}")
+        return None
+
 def set_api_key(api_key):
     """Store API key in session state"""
-    global groq_client
+    global groq_client, http_client
     if api_key:
         try:
             os.environ["GROQ_API_KEY"] = api_key
             st.session_state.api_key = api_key
-            # Initialize Groq client with only the required parameters
-            groq_client = Groq(api_key=api_key)
+            
+            # Initialize httpx client if not exists
+            if http_client is None:
+                http_client = init_http_client()
+            
+            # Initialize Groq client with httpx client
+            groq_client = Groq(
+                api_key=api_key,
+                http_client=http_client
+            )
             return True
         except Exception as e:
             logger.error(f"Error setting API key: {str(e)}")
@@ -94,17 +119,21 @@ def generate_embedding(text, model):
 
 def query_llm(prompt, model_name):
     """Query LLM using Groq"""
-    global groq_client
+    global groq_client, http_client
     
     if not st.session_state.get("api_key"):
         return "Error: API key not found. Please configure your API key first."
 
     try:
-        # Ensure client is initialized with API key
-        if groq_client is None:
-            groq_client = Groq(api_key=st.session_state.api_key)
+        # Ensure client is initialized with API key and httpx client
+        if groq_client is None or http_client is None:
+            http_client = init_http_client()
+            groq_client = Groq(
+                api_key=st.session_state.api_key,
+                http_client=http_client
+            )
         
-        # Make the API call with only required parameters
+        # Make the API call
         response = groq_client.chat.completions.create(
             model=model_name,
             messages=[
@@ -119,8 +148,9 @@ def query_llm(prompt, model_name):
         
     except Exception as e:
         logger.error(f"Error in query_llm: {str(e)}")
-        # Reset client on error
+        # Reset clients on error
         groq_client = None
+        http_client = None
         return f"Error: Failed to get response. Please check your API key and try again."
 
 def save_uploaded_file(uploaded_file):
