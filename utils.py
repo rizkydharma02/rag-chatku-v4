@@ -9,7 +9,7 @@ import numpy as np
 import streamlit as st
 import tempfile
 import logging
-import groq.client
+import groq
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
