@@ -10,7 +10,7 @@ import streamlit as st
 import tempfile
 import logging
 from typing import List, Optional
-from groq.client import Groq
+from groq import Groq
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
