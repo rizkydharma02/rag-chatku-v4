@@ -105,7 +105,7 @@ class ChatManager:
                         st.session_state.last_response = response
                         
                     # Force refresh
-                    st.experimental_rerun()
+                    st.rerun()
                     
                 except Exception as e:
                     st.error(f"Error processing message: {str(e)}")
