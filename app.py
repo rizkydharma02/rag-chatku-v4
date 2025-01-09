@@ -1,6 +1,6 @@
 import streamlit as st
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 st.set_page_config(
     page_title="Chatku AI",
@@ -16,7 +16,8 @@ from utils import (
 )
 from db_utils import DatabaseManager
 from auth_utils import (
-    login_user, register_user, get_current_user, logout_user
+    login_user, register_user, get_current_user, logout_user,
+    request_password_reset, reset_password  # Add these new imports
 )
 from chat_manager import ChatManager, initialize_chat_state
 from dotenv import load_dotenv
@@ -24,13 +25,21 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+def initialize_state():
+    """Initialize session state variables"""
+    if 'reset_step' not in st.session_state:
+        st.session_state.reset_step = "request"
+    if 'db_manager' not in st.session_state:
+        st.session_state.db_manager = DatabaseManager()
+
 def render_login_page():
+    initialize_state()
+
     header = st.container()
     with header:
         col1, col2 = st.columns([1, 18])
         with col1:
-             st.image("./img/logo-revou.jpg",
-             width=70,)
+             st.image("./img/logo-revou.jpg", width=70)
         with col2:
             st.subheader("PT. Revolusi Cita Edukasi")
 
@@ -116,9 +125,6 @@ def render_login_page():
     with tab3:
         st.subheader("Reset Password")
         
-        if "reset_step" not in st.session_state:
-            st.session_state.reset_step = "request"
-            
         if st.session_state.reset_step == "request":
             # Step 1: Request password reset
             with st.form("forgot_password_form"):
@@ -129,7 +135,6 @@ def render_login_page():
                         if request_password_reset(st.session_state.db_manager, reset_email):
                             st.session_state.reset_step = "reset"
                             st.success("✅ Link reset password telah dikirim!")
-                            # In a real application, you would send this token via email
                             # For demo purposes, we'll get it from the database
                             user = st.session_state.db_manager.get_user_by_email(reset_email)
                             if user and user.get("reset_token"):
