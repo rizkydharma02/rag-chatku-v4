@@ -56,8 +56,6 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
     groq_api_key = Column(String(255))
-    reset_token = Column(String)
-    reset_token_expires = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -66,8 +64,6 @@ class User(Base):
             "id": str(self.id) if self.id else None,
             "email": self.email,
             "groq_api_key": self.groq_api_key,
-            "reset_token": self.reset_token,
-            "reset_token_expires": self.reset_token_expires.isoformat() if self.reset_token_expires else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }
@@ -187,35 +183,8 @@ class DatabaseManager:
             logger.error(f"Error getting user by email: {str(e)}")
             return None
 
-    def save_reset_token(self, email: str, reset_token: str) -> bool:
-        """Save reset token for user."""
-        try:
-            logger.info(f"Saving reset token for email: {email}")
-            user = self.db.query(User).filter(User.email == email).first()
-            if not user:
-                logger.info("No user found with this email")
-                return False
-                
-            user.reset_token = reset_token
-            user.reset_token_expires = datetime.utcnow() + timedelta(minutes=30)
-            user.updated_at = datetime.utcnow()
-            
-            self.db.commit()
-            self.db.refresh(user)
-            
-            # Verify the token was saved
-            if user.reset_token == reset_token:
-                logger.info("Reset token saved successfully")
-                return True
-            logger.error("Reset token verification failed")
-            return False
-        except Exception as e:
-            self.db.rollback()
-            logger.error(f"Error saving reset token: {str(e)}")
-            return False
-
-    def update_password(self, email: str, new_password: str) -> bool:
-        """Update user password."""
+    def update_password_simple(self, email: str, new_password: str) -> bool:
+        """Update user password directly using email."""
         try:
             user = self.db.query(User).filter(User.email == email).first()
             if not user:
@@ -226,8 +195,6 @@ class DatabaseManager:
             hashed = bcrypt.hashpw(new_password.encode('utf-8'), salt)
             
             user.hashed_password = hashed.decode('utf-8')
-            user.reset_token = None
-            user.reset_token_expires = None
             user.updated_at = datetime.utcnow()
             
             self.db.commit()

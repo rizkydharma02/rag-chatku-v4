@@ -6,7 +6,6 @@ import os
 from db_utils import DatabaseManager
 import json
 import uuid
-import secrets
 
 # JWT Configuration
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-here").encode('utf-8')
@@ -132,7 +131,7 @@ def register_user(db_manager: DatabaseManager, email: str, password: str, groq_a
         return None
 
 def logout_user():
-    keys_to_clear = ['token', 'user_id', 'email', 'api_key', 'user', 'login_time', 'reset_step', 'reset_email']
+    keys_to_clear = ['token', 'user_id', 'email', 'api_key', 'user', 'login_time']
     for key in keys_to_clear:
         if key in st.session_state:
             del st.session_state[key]
@@ -167,82 +166,12 @@ def validate_groq_api_key(api_key: str) -> bool:
         print(f"Error validating API key: {str(e)}")
         return False
 
-# Password Reset Functions
-def generate_reset_token(email: str) -> str:
-    """Generate a password reset token."""
+def reset_password_simple(db_manager: DatabaseManager, email: str, new_password: str) -> bool:
+    """Reset password directly using email."""
     try:
-        to_encode = {
-            "sub": email,
-            "exp": datetime.utcnow() + timedelta(minutes=30),  # Token expires in 30 minutes
-            "type": "password_reset",
-            "iat": datetime.utcnow().timestamp()
-        }
-        
-        encoded_jwt = jwt.encode(
-            to_encode,
-            SECRET_KEY,
-            algorithm=ALGORITHM
-        )
-        return encoded_jwt
-    except Exception as e:
-        print(f"Error generating reset token: {str(e)}")
-        return None
-
-def verify_reset_token(token: str) -> Optional[str]:
-    """Verify the reset token and return the email if valid."""
-    try:
-        payload = jwt.decode(
-            token,
-            SECRET_KEY,
-            algorithms=[ALGORITHM]
-        )
-        
-        if payload.get("type") != "password_reset":
-            return None
-            
-        return payload.get("sub")  # Return the email
-    except jwt.ExpiredSignatureError:
-        return None
-    except Exception as e:
-        print(f"Error verifying reset token: {str(e)}")
-        return None
-
-def request_password_reset(db_manager: DatabaseManager, email: str) -> bool:
-    """Request a password reset for the given email."""
-    try:
-        print(f"Requesting password reset for email: {email}")
         # Check if user exists
         user = db_manager.get_user_by_email(email)
         if not user:
-            print("User not found")
-            return False
-            
-        print("User found, generating reset token")
-        # Generate reset token
-        reset_token = generate_reset_token(email)
-        if not reset_token:
-            print("Failed to generate reset token")
-            return False
-            
-        print("Token generated, saving to database")
-        # Store reset token in database
-        success = db_manager.save_reset_token(email, reset_token)
-        if not success:
-            print("Failed to save reset token")
-            return False
-            
-        print("Password reset request successful")
-        return True
-    except Exception as e:
-        print(f"Error requesting password reset: {str(e)}")
-        return False
-
-def reset_password(db_manager: DatabaseManager, token: str, new_password: str) -> bool:
-    """Reset password using the reset token."""
-    try:
-        # Verify token and get email
-        email = verify_reset_token(token)
-        if not email:
             return False
             
         # Validate new password
@@ -252,7 +181,7 @@ def reset_password(db_manager: DatabaseManager, token: str, new_password: str) -
             return False
             
         # Update password in database
-        success = db_manager.update_password(email, new_password)
+        success = db_manager.update_password_simple(email, new_password)
         if not success:
             return False
             
