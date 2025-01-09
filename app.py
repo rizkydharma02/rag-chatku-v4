@@ -26,7 +26,7 @@ load_dotenv()
 
 def render_login_page():
     st.image("./img/logo-revou.jpg",
-             width=300,
+             width=80,
              caption="PT. Revolusi Cita Edukasi")
     st.title("🤖 Chatku AI")
     st.caption("PT. Revolusi Cita Edukasi")
