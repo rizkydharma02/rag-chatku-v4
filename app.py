@@ -27,14 +27,15 @@ load_dotenv()
 def render_login_page():
     header = st.container()
     with header:
-        col1, col2 = st.columns([1, 3])
+        col1, col2 = st.columns([1, 2])
         with col1:
              st.image("./img/logo-revou.jpg",
              width=70,)
         with col2:
-            st.title("Chatku AI")
             st.subheader("PT. Revolusi Cita Edukasi")
-            st.caption("Chatku AI Dengan Retrieval Augmented Generation")
+
+    st.title("Chatku AI")
+    st.caption("Chatku AI Dengan Retrieval Augmented Generation")
     
     tab1, tab2 = st.tabs(["Login", "Daftar"])
     
