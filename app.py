@@ -37,8 +37,9 @@ def render_login_page():
     st.header("🤖 Chatku AI")
     st.caption("Chatku AI Dengan Retrieval Augmented Generation")
     
-    tab1, tab2 = st.tabs(["Login", "Daftar"])
+    tab1, tab2, tab3 = st.tabs(["Login", "Daftar", "Lupa Password"])
     
+    # Login tab
     with tab1:
         with st.form("login_form"):
             st.subheader("Login")
@@ -63,6 +64,7 @@ def render_login_page():
                 else:
                     st.warning("Silakan isi email dan password")
     
+    # Register tab
     with tab2:
         with st.form("register_form"):
             st.subheader("Daftar Akun Baru")
@@ -109,6 +111,68 @@ def render_login_page():
                         st.error(f"Gagal mendaftar: {str(e)}")
                 else:
                     st.warning("Silakan lengkapi semua field")
+    
+    # Lupa Password tab
+    with tab3:
+        st.subheader("Reset Password")
+        
+        if "reset_step" not in st.session_state:
+            st.session_state.reset_step = "request"
+            
+        if st.session_state.reset_step == "request":
+            # Step 1: Request password reset
+            with st.form("forgot_password_form"):
+                reset_email = st.text_input("Email", placeholder="Masukkan email anda")
+                
+                if st.form_submit_button("Reset Password", use_container_width=True):
+                    if reset_email:
+                        if request_password_reset(st.session_state.db_manager, reset_email):
+                            st.session_state.reset_step = "reset"
+                            st.success("✅ Link reset password telah dikirim!")
+                            # In a real application, you would send this token via email
+                            # For demo purposes, we'll get it from the database
+                            user = st.session_state.db_manager.get_user_by_email(reset_email)
+                            if user and user.get("reset_token"):
+                                st.info("Untuk demo, token akan ditampilkan di sini:")
+                                st.code(user["reset_token"])
+                                st.rerun()
+                        else:
+                            st.error("Email tidak ditemukan")
+                    else:
+                        st.warning("Silakan masukkan email")
+        
+        else:
+            # Step 2: Reset password with token
+            with st.form("reset_password_form"):
+                reset_token = st.text_input("Token Reset", placeholder="Masukkan token reset")
+                new_password = st.text_input("Password Baru", type="password", placeholder="Masukkan password baru")
+                confirm_password = st.text_input("Konfirmasi Password", type="password", placeholder="Konfirmasi password baru")
+                
+                st.write("**Persyaratan Password Baru:**")
+                st.write("- Minimal 6 karakter")
+                st.write("- Minimal 1 huruf besar")
+                st.write("- Minimal 1 huruf kecil")
+                st.write("- Minimal 1 angka")
+                
+                col1, col2 = st.columns([1, 4])
+                with col1:
+                    if st.form_submit_button("Kembali"):
+                        st.session_state.reset_step = "request"
+                        st.rerun()
+                with col2:
+                    if st.form_submit_button("Reset Password", use_container_width=True):
+                        if not reset_token or not new_password or not confirm_password:
+                            st.warning("Silakan lengkapi semua field")
+                        elif new_password != confirm_password:
+                            st.error("Password tidak cocok")
+                        else:
+                            if reset_password(st.session_state.db_manager, reset_token, new_password):
+                                st.success("✅ Password berhasil direset!")
+                                st.session_state.reset_step = "request"
+                                time.sleep(1)
+                                st.rerun()
+                            else:
+                                st.error("Token tidak valid atau sudah kadaluarsa")
 
 def handle_sidebar():
     user = get_current_user()

@@ -56,6 +56,8 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
     groq_api_key = Column(String(255))
+    reset_token = Column(String)
+    reset_token_expires = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -64,6 +66,8 @@ class User(Base):
             "id": str(self.id) if self.id else None,
             "email": self.email,
             "groq_api_key": self.groq_api_key,
+            "reset_token": self.reset_token,
+            "reset_token_expires": self.reset_token_expires.isoformat() if self.reset_token_expires else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }
@@ -168,3 +172,55 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to get API key: {str(e)}")
             return None
+            
+    # New methods for password reset functionality
+    def get_user_by_email(self, email: str):
+        """Get user by email."""
+        try:
+            user = self.db.query(User).filter(User.email == email).first()
+            return user.to_dict() if user else None
+        except Exception as e:
+            logger.error(f"Error getting user by email: {str(e)}")
+            return None
+
+    def save_reset_token(self, email: str, reset_token: str) -> bool:
+        """Save reset token for user."""
+        try:
+            user = self.db.query(User).filter(User.email == email).first()
+            if not user:
+                return False
+                
+            user.reset_token = reset_token
+            user.reset_token_expires = datetime.utcnow() + timedelta(minutes=30)
+            user.updated_at = datetime.utcnow()
+            
+            self.db.commit()
+            self.db.refresh(user)
+            return True
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error saving reset token: {str(e)}")
+            return False
+
+    def update_password(self, email: str, new_password: str) -> bool:
+        """Update user password."""
+        try:
+            user = self.db.query(User).filter(User.email == email).first()
+            if not user:
+                return False
+                
+            salt = bcrypt.gensalt()
+            hashed = bcrypt.hashpw(new_password.encode('utf-8'), salt)
+            
+            user.hashed_password = hashed.decode('utf-8')
+            user.reset_token = None
+            user.reset_token_expires = None
+            user.updated_at = datetime.utcnow()
+            
+            self.db.commit()
+            self.db.refresh(user)
+            return True
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error updating password: {str(e)}")
+            return False
