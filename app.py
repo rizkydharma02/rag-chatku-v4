@@ -291,7 +291,7 @@ def main():
     with st.sidebar:
         handle_sidebar()
         
-    st.title("Chatku AI")
+    st.header("🤖 Chatku AI")
     st.caption("Chatku AI dengan Retrieval Augmented Generation")
     
     chat_manager = ChatManager()
