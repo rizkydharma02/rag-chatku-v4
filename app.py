@@ -34,7 +34,7 @@ def render_login_page():
         with col2:
             st.subheader("PT. Revolusi Cita Edukasi")
 
-    st.title("🤖 Chatku AI")
+    st.header("🤖 Chatku AI")
     st.caption("Chatku AI Dengan Retrieval Augmented Generation")
     
     tab1, tab2 = st.tabs(["Login", "Daftar"])
