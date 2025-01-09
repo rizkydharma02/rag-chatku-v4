@@ -17,7 +17,7 @@ from utils import (
 from db_utils import DatabaseManager
 from auth_utils import (
     login_user, register_user, get_current_user, logout_user,
-    request_password_reset, reset_password  # Add these new imports
+    request_password_reset, reset_password, validate_password
 )
 from chat_manager import ChatManager, initialize_chat_state
 from dotenv import load_dotenv
@@ -32,20 +32,101 @@ def initialize_state():
     if 'db_manager' not in st.session_state:
         st.session_state.db_manager = DatabaseManager()
 
-def render_login_page():
-    initialize_state()
+def handle_password_reset(tab3):
+    """Handle password reset logic"""
+    with tab3:
+        st.subheader("Reset Password")
+        
+        if st.session_state.reset_step == "request":
+            # Step 1: Request password reset
+            with st.form("forgot_password_form"):
+                reset_email = st.text_input("Email", placeholder="Masukkan email anda")
+                submitted = st.form_submit_button("Reset Password", use_container_width=True)
+                
+                if submitted:
+                    if not reset_email:
+                        st.warning("Silakan masukkan email")
+                        return
+                        
+                    # Check if email exists and request reset
+                    if request_password_reset(st.session_state.db_manager, reset_email):
+                        st.session_state.reset_step = "reset"
+                        st.session_state.reset_email = reset_email
+                        st.success("✅ Link reset password telah dikirim!")
+                        
+                        # For demo purposes only
+                        user = st.session_state.db_manager.get_user_by_email(reset_email)
+                        if user and "reset_token" in user:
+                            st.info("Untuk demo, token akan ditampilkan di sini:")
+                            st.code(user["reset_token"])
+                        st.rerun()
+                    else:
+                        st.error("Email tidak ditemukan")
+        
+        else:
+            # Step 2: Reset password with token
+            with st.form("reset_password_form"):
+                reset_token = st.text_input("Token Reset", placeholder="Masukkan token reset")
+                new_password = st.text_input("Password Baru", type="password", placeholder="Masukkan password baru")
+                confirm_password = st.text_input("Konfirmasi Password", type="password", placeholder="Konfirmasi password baru")
+                
+                st.write("**Persyaratan Password Baru:**")
+                st.write("- Minimal 6 karakter")
+                st.write("- Minimal 1 huruf besar")
+                st.write("- Minimal 1 huruf kecil")
+                st.write("- Minimal 1 angka")
+                
+                col1, col2 = st.columns([1, 4])
+                with col1:
+                    if st.form_submit_button("Kembali"):
+                        st.session_state.reset_step = "request"
+                        if "reset_email" in st.session_state:
+                            del st.session_state.reset_email
+                        st.rerun()
+                        
+                with col2:
+                    if st.form_submit_button("Reset Password", use_container_width=True):
+                        if not all([reset_token, new_password, confirm_password]):
+                            st.warning("Silakan lengkapi semua field")
+                            return
+                            
+                        if new_password != confirm_password:
+                            st.error("Password tidak cocok")
+                            return
+                            
+                        # Validate password
+                        is_valid, message = validate_password(new_password)
+                        if not is_valid:
+                            st.error(message)
+                            return
+                            
+                        if reset_password(st.session_state.db_manager, reset_token, new_password):
+                            st.success("✅ Password berhasil direset!")
+                            st.session_state.reset_step = "request"
+                            if "reset_email" in st.session_state:
+                                del st.session_state.reset_email
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error("Token tidak valid atau sudah kadaluarsa")
 
+def render_login_page():
+    """Render the login page with all tabs"""
+    initialize_state()
+    
+    # Display header
     header = st.container()
     with header:
         col1, col2 = st.columns([1, 18])
         with col1:
-             st.image("./img/logo-revou.jpg", width=70)
+            st.image("./img/logo-revou.jpg", width=70)
         with col2:
             st.subheader("PT. Revolusi Cita Edukasi")
 
     st.header("🤖 Chatku AI")
     st.caption("Chatku AI Dengan Retrieval Augmented Generation")
     
+    # Create tabs
     tab1, tab2, tab3 = st.tabs(["Login", "Daftar", "Lupa Password"])
     
     # Login tab
@@ -121,63 +202,8 @@ def render_login_page():
                 else:
                     st.warning("Silakan lengkapi semua field")
     
-    # Lupa Password tab
-    with tab3:
-        st.subheader("Reset Password")
-        
-        if st.session_state.reset_step == "request":
-            # Step 1: Request password reset
-            with st.form("forgot_password_form"):
-                reset_email = st.text_input("Email", placeholder="Masukkan email anda")
-                
-                if st.form_submit_button("Reset Password", use_container_width=True):
-                    if reset_email:
-                        if request_password_reset(st.session_state.db_manager, reset_email):
-                            st.session_state.reset_step = "reset"
-                            st.success("✅ Link reset password telah dikirim!")
-                            # For demo purposes, we'll get it from the database
-                            user = st.session_state.db_manager.get_user_by_email(reset_email)
-                            if user and user.get("reset_token"):
-                                st.info("Untuk demo, token akan ditampilkan di sini:")
-                                st.code(user["reset_token"])
-                                st.rerun()
-                        else:
-                            st.error("Email tidak ditemukan")
-                    else:
-                        st.warning("Silakan masukkan email")
-        
-        else:
-            # Step 2: Reset password with token
-            with st.form("reset_password_form"):
-                reset_token = st.text_input("Token Reset", placeholder="Masukkan token reset")
-                new_password = st.text_input("Password Baru", type="password", placeholder="Masukkan password baru")
-                confirm_password = st.text_input("Konfirmasi Password", type="password", placeholder="Konfirmasi password baru")
-                
-                st.write("**Persyaratan Password Baru:**")
-                st.write("- Minimal 6 karakter")
-                st.write("- Minimal 1 huruf besar")
-                st.write("- Minimal 1 huruf kecil")
-                st.write("- Minimal 1 angka")
-                
-                col1, col2 = st.columns([1, 4])
-                with col1:
-                    if st.form_submit_button("Kembali"):
-                        st.session_state.reset_step = "request"
-                        st.rerun()
-                with col2:
-                    if st.form_submit_button("Reset Password", use_container_width=True):
-                        if not reset_token or not new_password or not confirm_password:
-                            st.warning("Silakan lengkapi semua field")
-                        elif new_password != confirm_password:
-                            st.error("Password tidak cocok")
-                        else:
-                            if reset_password(st.session_state.db_manager, reset_token, new_password):
-                                st.success("✅ Password berhasil direset!")
-                                st.session_state.reset_step = "request"
-                                time.sleep(1)
-                                st.rerun()
-                            else:
-                                st.error("Token tidak valid atau sudah kadaluarsa")
+    # Handle Password Reset tab
+    handle_password_reset(tab3)
 
 def handle_sidebar():
     user = get_current_user()

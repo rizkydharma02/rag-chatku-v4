@@ -2,7 +2,7 @@ from sqlalchemy import create_engine, Column, String, DateTime, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from datetime import datetime
+from datetime import datetime, timedelta
 import bcrypt
 import os
 import streamlit as st
@@ -172,13 +172,17 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to get API key: {str(e)}")
             return None
-            
-    # New methods for password reset functionality
+
     def get_user_by_email(self, email: str):
         """Get user by email."""
         try:
+            logger.info(f"Attempting to find user with email: {email}")
             user = self.db.query(User).filter(User.email == email).first()
-            return user.to_dict() if user else None
+            if user:
+                logger.info(f"User found: {user.email}")
+                return user.to_dict()
+            logger.info("No user found with this email")
+            return None
         except Exception as e:
             logger.error(f"Error getting user by email: {str(e)}")
             return None
@@ -186,8 +190,10 @@ class DatabaseManager:
     def save_reset_token(self, email: str, reset_token: str) -> bool:
         """Save reset token for user."""
         try:
+            logger.info(f"Saving reset token for email: {email}")
             user = self.db.query(User).filter(User.email == email).first()
             if not user:
+                logger.info("No user found with this email")
                 return False
                 
             user.reset_token = reset_token
@@ -196,7 +202,13 @@ class DatabaseManager:
             
             self.db.commit()
             self.db.refresh(user)
-            return True
+            
+            # Verify the token was saved
+            if user.reset_token == reset_token:
+                logger.info("Reset token saved successfully")
+                return True
+            logger.error("Reset token verification failed")
+            return False
         except Exception as e:
             self.db.rollback()
             logger.error(f"Error saving reset token: {str(e)}")
@@ -207,6 +219,7 @@ class DatabaseManager:
         try:
             user = self.db.query(User).filter(User.email == email).first()
             if not user:
+                logger.error("No user found with this email")
                 return False
                 
             salt = bcrypt.gensalt()
@@ -219,6 +232,8 @@ class DatabaseManager:
             
             self.db.commit()
             self.db.refresh(user)
+            
+            logger.info("Password updated successfully")
             return True
         except Exception as e:
             self.db.rollback()

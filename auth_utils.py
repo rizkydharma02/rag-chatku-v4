@@ -132,7 +132,7 @@ def register_user(db_manager: DatabaseManager, email: str, password: str, groq_a
         return None
 
 def logout_user():
-    keys_to_clear = ['token', 'user_id', 'email', 'api_key', 'user', 'login_time']
+    keys_to_clear = ['token', 'user_id', 'email', 'api_key', 'user', 'login_time', 'reset_step', 'reset_email']
     for key in keys_to_clear:
         if key in st.session_state:
             del st.session_state[key]
@@ -167,14 +167,15 @@ def validate_groq_api_key(api_key: str) -> bool:
         print(f"Error validating API key: {str(e)}")
         return False
 
-# New Password Reset Functions
+# Password Reset Functions
 def generate_reset_token(email: str) -> str:
     """Generate a password reset token."""
     try:
         to_encode = {
             "sub": email,
             "exp": datetime.utcnow() + timedelta(minutes=30),  # Token expires in 30 minutes
-            "type": "password_reset"
+            "type": "password_reset",
+            "iat": datetime.utcnow().timestamp()
         }
         
         encoded_jwt = jwt.encode(
@@ -209,21 +210,28 @@ def verify_reset_token(token: str) -> Optional[str]:
 def request_password_reset(db_manager: DatabaseManager, email: str) -> bool:
     """Request a password reset for the given email."""
     try:
+        print(f"Requesting password reset for email: {email}")
         # Check if user exists
         user = db_manager.get_user_by_email(email)
         if not user:
+            print("User not found")
             return False
             
+        print("User found, generating reset token")
         # Generate reset token
         reset_token = generate_reset_token(email)
         if not reset_token:
+            print("Failed to generate reset token")
             return False
             
+        print("Token generated, saving to database")
         # Store reset token in database
         success = db_manager.save_reset_token(email, reset_token)
         if not success:
+            print("Failed to save reset token")
             return False
             
+        print("Password reset request successful")
         return True
     except Exception as e:
         print(f"Error requesting password reset: {str(e)}")
