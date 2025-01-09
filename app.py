@@ -27,7 +27,7 @@ load_dotenv()
 def render_login_page():
     header = st.container()
     with header:
-        col1, col2 = st.columns([1, 1])
+        col1, col2 = st.columns([1, 5])
         with col1:
              st.image("./img/logo-revou.jpg",
              width=70,)
