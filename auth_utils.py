@@ -111,7 +111,7 @@ def get_current_user() -> Dict[str, Any]:
 def register_user(db_manager: DatabaseManager, email: str, password: str, groq_api_key: str) -> Dict[str, Any]:
     try:
         if not validate_email(email):
-            st.error("Please enter a valid email address")
+            st.error("Masukkan alamat email yang valid")
             return None
             
         is_valid_password, message = validate_password(password)
@@ -120,7 +120,7 @@ def register_user(db_manager: DatabaseManager, email: str, password: str, groq_a
             return None
             
         if not validate_groq_api_key(groq_api_key):
-            st.error("Please enter a valid GROQ API key")
+            st.error("Masukkan Groq API Key yang valid")
             return None
             
         user = db_manager.create_user(email, password, groq_api_key)
@@ -143,13 +143,13 @@ def validate_email(email: str) -> bool:
 
 def validate_password(password: str) -> tuple[bool, str]:
     if len(password) < 6:
-        return False, "Password must be at least 6 characters"
+        return False, "Kata sandi minimal harus terdiri dari 6 karakter"
     if not any(c.isupper() for c in password):
-        return False, "Password must contain at least one uppercase letter"
+        return False, "Kata sandi harus mengandung setidaknya satu huruf besar"
     if not any(c.islower() for c in password):
-        return False, "Password must contain at least one lowercase letter"
+        return False, "Kata sandi harus mengandung setidaknya satu huruf kecil"
     if not any(c.isdigit() for c in password):
-        return False, "Password must contain at least one number"
+        return False, "Kata sandi harus berisi setidaknya satu angka"
     return True, "Password is valid"
 
 def validate_groq_api_key(api_key: str) -> bool:
