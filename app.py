@@ -25,7 +25,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def render_login_page():
+    st.image("./img/logo-revou.jpg",
+             width=600,
+             caption="PT. Revolusi Cita Edukasi")
     st.title("🤖 Chatku AI")
+    st.caption("PT. Revolusi Cita Edukasi")
     st.caption("Chatku AI Dengan Retrieval Augmented Generation")
     
     tab1, tab2 = st.tabs(["Login", "Daftar"])
