@@ -2,7 +2,7 @@ import streamlit as st
 from datetime import datetime
 from typing import Optional
 from utils import query_llm, generate_embedding, load_embedding_model, search_index
-from db_utils import DatabaseManager
+from db_utils import DatabaseManager, Chatbot
 import logging
 
 logger = logging.getLogger(__name__)
@@ -11,9 +11,8 @@ class ChatManager:
     def __init__(self):
         if 'chat_messages' not in st.session_state:
             st.session_state.chat_messages = []
-        self.db_manager = DatabaseManager()
             
-    def add_message(self, role: str, content: str, save_to_db: bool = False, user_input: str = None):
+    def add_message(self, role: str, content: str):
         if not content:
             return
             
@@ -23,16 +22,18 @@ class ChatManager:
             "timestamp": datetime.now()
         }
         st.session_state.chat_messages.append(message)
-        
-        if save_to_db and role == "assistant" and user_input:
-            try:
-                saved = self.db_manager.save_chat(user_input, content)
-                if not saved:
-                    logger.error("Database save failed")
-                    raise Exception("Failed to save to database")
-            except Exception as e:
-                logger.error(f"Save chat error: {str(e)}")
-                raise
+            
+    def get_context(self, query: str) -> Optional[str]:
+        try:
+            if st.session_state.get('index') is not None:
+                model = load_embedding_model(st.session_state.selected_embedding_model)
+                query_embedding = generate_embedding(query, model)
+                relevant_doc_indices = search_index(st.session_state.index, query_embedding)
+                return "\n".join([st.session_state.documents[i][:1000] for i in relevant_doc_indices])
+            return None
+        except Exception as e:
+            st.error(f"Error getting context: {str(e)}")
+            return None
             
     def handle_chat_interface(self):
         for msg in st.session_state.chat_messages:
@@ -52,6 +53,8 @@ class ChatManager:
 
             if submit_button and user_input:
                 try:
+                    db_manager = DatabaseManager()
+                    
                     self.add_message("user", user_input)
                     context = self.get_context(user_input)
                     prompt = (f"Berdasarkan konteks berikut:\n\n{context}\n\n"
@@ -61,15 +64,44 @@ class ChatManager:
                         response = query_llm(prompt, st.session_state.selected_model)
 
                     if response and not response.startswith("Error"):
-                        self.add_message("assistant", response, save_to_db=True, user_input=user_input)
-                        st.rerun()
+                        try:
+                            # Save chat to database
+                            if db_manager.save_chat(user_input, response):
+                                logger.info("Chat saved to database successfully")
+                                self.add_message("assistant", response)
+                                st.rerun()
+                            else:
+                                raise Exception("Failed to save chat to database")
+                        except Exception as e:
+                            logger.error(f"Database error: {str(e)}")
+                            st.error("Error saving chat")
                     else:
                         st.error(response)
-
                 except Exception as e:
                     logger.error(f"Chat error: {str(e)}")
                     st.error("Terjadi kesalahan dalam memproses chat")
+                finally:
+                    if 'db_manager' in locals():
+                        del db_manager
 
-    def __del__(self):
-        if hasattr(self, 'db_manager'):
-            del self.db_manager
+def initialize_chat_state():
+    if 'chat_messages' not in st.session_state:
+        st.session_state.chat_messages = []
+    if 'documents' not in st.session_state:
+        st.session_state.documents = []
+    if 'embeddings' not in st.session_state:
+        st.session_state.embeddings = []
+    if 'index' not in st.session_state:
+        st.session_state.index = None
+    if 'processed_files' not in st.session_state:
+        st.session_state.processed_files = []
+    if 'processed_urls' not in st.session_state:
+        st.session_state.processed_urls = []
+    if 'selected_model' not in st.session_state:
+        st.session_state.selected_model = "mixtral-8x7b-32768"
+    if 'selected_embedding_model' not in st.session_state:
+        st.session_state.selected_embedding_model = "all-MiniLM-L6-v2"
+    if 'api_key' not in st.session_state:
+        st.session_state.api_key = ""
+    if 'clear_url' not in st.session_state:
+        st.session_state.clear_url = False

@@ -10,11 +10,9 @@ from dotenv import load_dotenv
 import logging
 import uuid
 
-# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Load environment variables
 load_dotenv()
 
 def get_database_url():
@@ -44,7 +42,6 @@ def init_database():
         logger.error(f"Database initialization failed: {str(e)}")
         raise
 
-# Initialize database
 engine = init_database()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -73,10 +70,9 @@ class Chatbot(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     question_chat = Column(Text)
-    response_chat = Column(Text)
+    response_chat = Column(Text) 
     created_at = Column(DateTime, default=datetime.utcnow)
 
-# Create tables
 Base.metadata.create_all(bind=engine)
 
 class DatabaseManager:
@@ -131,8 +127,6 @@ class DatabaseManager:
 
     def save_api_key(self, user_id: str, api_key: str) -> bool:
         try:
-            logger.info(f"Attempting to save API key for user ID: {user_id}")
-            
             if isinstance(user_id, str):
                 user_id = uuid.UUID(user_id)
                 
@@ -142,7 +136,6 @@ class DatabaseManager:
                 return False
 
             logger.info(f"Found user: {user.email}")
-
             user.groq_api_key = api_key
             user.updated_at = datetime.utcnow()
             
@@ -174,7 +167,6 @@ class DatabaseManager:
 
     def get_user_by_email(self, email: str):
         try:
-            logger.info(f"Attempting to find user with email: {email}")
             user = self.db.query(User).filter(User.email == email).first()
             if user:
                 logger.info(f"User found: {user.email}")
@@ -210,6 +202,7 @@ class DatabaseManager:
 
     def save_chat(self, question: str, response: str) -> bool:
         try:
+            logger.info("Attempting to save chat to database")
             chat = Chatbot(
                 question_chat=question,
                 response_chat=response
