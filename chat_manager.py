@@ -11,7 +11,6 @@ class ChatManager:
     def __init__(self):
         if 'chat_messages' not in st.session_state:
             st.session_state.chat_messages = []
-        self.db_manager = DatabaseManager()
             
     def add_message(self, role: str, content: str):
         if not content:
@@ -23,7 +22,7 @@ class ChatManager:
             "timestamp": datetime.now()
         }
         st.session_state.chat_messages.append(message)
-        
+            
     def get_context(self, query: str) -> Optional[str]:
         try:
             if st.session_state.get('index') is not None:
@@ -37,6 +36,7 @@ class ChatManager:
             return None
             
     def handle_chat_interface(self):
+        # Display chat history
         for msg in st.session_state.chat_messages:
             with st.container():
                 if msg['role'] == 'user':
@@ -47,6 +47,7 @@ class ChatManager:
                     st.caption(msg['timestamp'].strftime('%H:%M'))
             st.write("---")
 
+        # Chat input
         with st.form(key="chat_form", clear_on_submit=True):
             user_input = st.text_input("Message", key="user_input", 
                                      placeholder="Ketik pesan Anda di sini...")
@@ -54,56 +55,47 @@ class ChatManager:
 
             if submit_button and user_input:
                 try:
-                    # Add user message
                     self.add_message("user", user_input)
-                    
-                    # Get context if available
                     context = self.get_context(user_input)
-                    
-                    # Prepare prompt
                     prompt = (f"Berdasarkan konteks berikut:\n\n{context}\n\n"
                             f"Jawab pertanyaan ini: {user_input}") if context else user_input
-                    
-                    # Get response
+
                     with st.spinner("Menghasilkan respons..."):
                         response = query_llm(prompt, st.session_state.selected_model)
-                    
+
                     if response and not response.startswith("Error"):
-                        # Save to database first
-                        try:
-                            self.db_manager.save_chat(user_input, response)
-                            logger.info("Successfully saved chat to database")
-                        except Exception as e:
-                            logger.error(f"Failed to save chat to database: {str(e)}")
+                        db = DatabaseManager()
+                        saved = db.save_chat(user_input, response)
                         
-                        # Then add to session state
-                        self.add_message("assistant", response)
-                        st.rerun()
+                        if saved:
+                            self.add_message("assistant", response)
+                            st.rerun()
+                        else:
+                            st.error("Failed to save chat")
                     else:
                         st.error(response)
-                    
+
                 except Exception as e:
-                    logger.error(f"Chat interface error: {str(e)}")
                     st.error(f"Error: {str(e)}")
 
-    def __del__(self):
-        if hasattr(self, 'db_manager'):
-            del self.db_manager
-
 def initialize_chat_state():
-    default_states = {
-        'chat_messages': [],
-        'documents': [],
-        'embeddings': [],
-        'index': None,
-        'processed_files': [],
-        'processed_urls': [],
-        'selected_model': "mixtral-8x7b-32768",
-        'selected_embedding_model': "all-MiniLM-L6-v2",
-        'api_key': "",
-        'clear_url': False
-    }
-    
-    for key, default_value in default_states.items():
-        if key not in st.session_state:
-            st.session_state[key] = default_value
+    if 'chat_messages' not in st.session_state:
+        st.session_state.chat_messages = []
+    if 'documents' not in st.session_state:
+        st.session_state.documents = []
+    if 'embeddings' not in st.session_state:
+        st.session_state.embeddings = []
+    if 'index' not in st.session_state:
+        st.session_state.index = None
+    if 'processed_files' not in st.session_state:
+        st.session_state.processed_files = []
+    if 'processed_urls' not in st.session_state:
+        st.session_state.processed_urls = []
+    if 'selected_model' not in st.session_state:
+        st.session_state.selected_model = "mixtral-8x7b-32768"
+    if 'selected_embedding_model' not in st.session_state:
+        st.session_state.selected_embedding_model = "all-MiniLM-L6-v2"
+    if 'api_key' not in st.session_state:
+        st.session_state.api_key = ""
+    if 'clear_url' not in st.session_state:
+        st.session_state.clear_url = False
