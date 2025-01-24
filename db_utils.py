@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, String, DateTime, text
+from sqlalchemy import create_engine, Column, String, DateTime, text, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -68,6 +68,14 @@ class User(Base):
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }
 
+class Chatbot(Base):
+    __tablename__ = "chatbot"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    question_chat = Column(Text)
+    response_chat = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 # Create tables
 Base.metadata.create_all(bind=engine)
 
@@ -125,11 +133,9 @@ class DatabaseManager:
         try:
             logger.info(f"Attempting to save API key for user ID: {user_id}")
             
-            # Convert string UUID to UUID object if necessary
             if isinstance(user_id, str):
                 user_id = uuid.UUID(user_id)
                 
-            # Get user
             user = self.db.query(User).filter(User.id == user_id).first()
             if not user:
                 logger.error(f"No user found with ID {user_id}")
@@ -137,15 +143,12 @@ class DatabaseManager:
 
             logger.info(f"Found user: {user.email}")
 
-            # Update API key
             user.groq_api_key = api_key
             user.updated_at = datetime.utcnow()
             
-            # Save changes
             self.db.commit()
             self.db.refresh(user)
             
-            # Verify update
             if user.groq_api_key == api_key:
                 logger.info(f"API key updated successfully for user {user_id}")
                 return True
@@ -170,7 +173,6 @@ class DatabaseManager:
             return None
 
     def get_user_by_email(self, email: str):
-        """Get user by email."""
         try:
             logger.info(f"Attempting to find user with email: {email}")
             user = self.db.query(User).filter(User.email == email).first()
@@ -184,7 +186,6 @@ class DatabaseManager:
             return None
 
     def update_password_simple(self, email: str, new_password: str) -> bool:
-        """Update user password directly using email."""
         try:
             user = self.db.query(User).filter(User.email == email).first()
             if not user:
@@ -205,4 +206,19 @@ class DatabaseManager:
         except Exception as e:
             self.db.rollback()
             logger.error(f"Error updating password: {str(e)}")
+            return False
+
+    def save_chat(self, question: str, response: str) -> bool:
+        try:
+            chat = Chatbot(
+                question_chat=question,
+                response_chat=response
+            )
+            self.db.add(chat)
+            self.db.commit()
+            logger.info("Chat saved successfully")
+            return True
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Failed to save chat: {str(e)}")
             return False

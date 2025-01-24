@@ -2,6 +2,7 @@ import streamlit as st
 from datetime import datetime
 from typing import Optional
 from utils import query_llm, generate_embedding, load_embedding_model, search_index
+from db_utils import DatabaseManager
 
 class ChatManager:
     def __init__(self):
@@ -65,9 +66,12 @@ class ChatManager:
                     with st.spinner("Menghasilkan respons..."):
                         response = query_llm(prompt, st.session_state.selected_model)
                     
-                    # Add response to chat
+                    # Add response to chat and save to database
                     if response and not response.startswith("Error"):
                         self.add_message("assistant", response)
+                        # Save chat to database
+                        db_manager = DatabaseManager()
+                        db_manager.save_chat(user_input, response)
                     else:
                         st.error(response)
                     
