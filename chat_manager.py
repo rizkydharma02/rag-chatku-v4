@@ -3,11 +3,15 @@ from datetime import datetime
 from typing import Optional
 from utils import query_llm, generate_embedding, load_embedding_model, search_index
 from db_utils import DatabaseManager
+import logging
+
+logger = logging.getLogger(__name__)
 
 class ChatManager:
     def __init__(self):
         if 'chat_messages' not in st.session_state:
             st.session_state.chat_messages = []
+        self.db_manager = DatabaseManager()
             
     def add_message(self, role: str, content: str):
         if not content:
@@ -20,6 +24,18 @@ class ChatManager:
         }
         
         st.session_state.chat_messages.append(message)
+        
+        if role == "assistant":
+            try:
+                # Get the last user message
+                user_messages = [msg for msg in st.session_state.chat_messages if msg["role"] == "user"]
+                if user_messages:
+                    last_user_message = user_messages[-1]["content"]
+                    # Save to database
+                    self.db_manager.save_chat(last_user_message, content)
+                    logger.info("Chat saved to database successfully")
+            except Exception as e:
+                logger.error(f"Failed to save chat to database: {str(e)}")
         
     def get_context(self, query: str) -> Optional[str]:
         try:
@@ -52,9 +68,9 @@ class ChatManager:
             submit_button = st.form_submit_button("Kirim", use_container_width=True)
 
             if submit_button and user_input:
-                self.add_message("user", user_input)
-                
                 try:
+                    self.add_message("user", user_input)
+                    
                     # Get context if available
                     context = self.get_context(user_input)
                     
@@ -66,20 +82,19 @@ class ChatManager:
                     with st.spinner("Menghasilkan respons..."):
                         response = query_llm(prompt, st.session_state.selected_model)
                     
-                    # Add response to chat and save to database
                     if response and not response.startswith("Error"):
                         self.add_message("assistant", response)
-                        # Save chat to database
-                        db_manager = DatabaseManager()
-                        db_manager.save_chat(user_input, response)
+                        st.rerun()
                     else:
                         st.error(response)
                     
-                    # Refresh the page
-                    st.rerun()
-                    
                 except Exception as e:
+                    logger.error(f"Chat interface error: {str(e)}")
                     st.error(f"Error: {str(e)}")
+
+    def __del__(self):
+        if hasattr(self, 'db_manager'):
+            del self.db_manager
 
 def initialize_chat_state():
     default_states = {
