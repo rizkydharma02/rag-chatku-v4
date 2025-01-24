@@ -11,8 +11,9 @@ class ChatManager:
     def __init__(self):
         if 'chat_messages' not in st.session_state:
             st.session_state.chat_messages = []
+        self.db_manager = DatabaseManager()
             
-    def add_message(self, role: str, content: str):
+    def add_message(self, role: str, content: str, save_to_db: bool = False, user_input: str = None):
         if not content:
             return
             
@@ -22,21 +23,18 @@ class ChatManager:
             "timestamp": datetime.now()
         }
         st.session_state.chat_messages.append(message)
-            
-    def get_context(self, query: str) -> Optional[str]:
-        try:
-            if st.session_state.get('index') is not None:
-                model = load_embedding_model(st.session_state.selected_embedding_model)
-                query_embedding = generate_embedding(query, model)
-                relevant_doc_indices = search_index(st.session_state.index, query_embedding)
-                return "\n".join([st.session_state.documents[i][:1000] for i in relevant_doc_indices])
-            return None
-        except Exception as e:
-            st.error(f"Error getting context: {str(e)}")
-            return None
+        
+        if save_to_db and role == "assistant" and user_input:
+            try:
+                saved = self.db_manager.save_chat(user_input, content)
+                if not saved:
+                    logger.error("Database save failed")
+                    raise Exception("Failed to save to database")
+            except Exception as e:
+                logger.error(f"Save chat error: {str(e)}")
+                raise
             
     def handle_chat_interface(self):
-        # Display chat history
         for msg in st.session_state.chat_messages:
             with st.container():
                 if msg['role'] == 'user':
@@ -47,7 +45,6 @@ class ChatManager:
                     st.caption(msg['timestamp'].strftime('%H:%M'))
             st.write("---")
 
-        # Chat input
         with st.form(key="chat_form", clear_on_submit=True):
             user_input = st.text_input("Message", key="user_input", 
                                      placeholder="Ketik pesan Anda di sini...")
@@ -59,43 +56,20 @@ class ChatManager:
                     context = self.get_context(user_input)
                     prompt = (f"Berdasarkan konteks berikut:\n\n{context}\n\n"
                             f"Jawab pertanyaan ini: {user_input}") if context else user_input
-
+                    
                     with st.spinner("Menghasilkan respons..."):
                         response = query_llm(prompt, st.session_state.selected_model)
 
                     if response and not response.startswith("Error"):
-                        db = DatabaseManager()
-                        saved = db.save_chat(user_input, response)
-                        
-                        if saved:
-                            self.add_message("assistant", response)
-                            st.rerun()
-                        else:
-                            st.error("Failed to save chat")
+                        self.add_message("assistant", response, save_to_db=True, user_input=user_input)
+                        st.rerun()
                     else:
                         st.error(response)
 
                 except Exception as e:
-                    st.error(f"Error: {str(e)}")
+                    logger.error(f"Chat error: {str(e)}")
+                    st.error("Terjadi kesalahan dalam memproses chat")
 
-def initialize_chat_state():
-    if 'chat_messages' not in st.session_state:
-        st.session_state.chat_messages = []
-    if 'documents' not in st.session_state:
-        st.session_state.documents = []
-    if 'embeddings' not in st.session_state:
-        st.session_state.embeddings = []
-    if 'index' not in st.session_state:
-        st.session_state.index = None
-    if 'processed_files' not in st.session_state:
-        st.session_state.processed_files = []
-    if 'processed_urls' not in st.session_state:
-        st.session_state.processed_urls = []
-    if 'selected_model' not in st.session_state:
-        st.session_state.selected_model = "mixtral-8x7b-32768"
-    if 'selected_embedding_model' not in st.session_state:
-        st.session_state.selected_embedding_model = "all-MiniLM-L6-v2"
-    if 'api_key' not in st.session_state:
-        st.session_state.api_key = ""
-    if 'clear_url' not in st.session_state:
-        st.session_state.clear_url = False
+    def __del__(self):
+        if hasattr(self, 'db_manager'):
+            del self.db_manager
