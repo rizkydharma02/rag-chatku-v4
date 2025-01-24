@@ -70,7 +70,7 @@ class Chatbot(Base):
 
     id = Column(BigInteger, primary_key=True)
     question_chat = Column(String)
-    response_chat = Column(String)
+    response_chat = Column(String) 
     created_at = Column(DateTime, default=datetime.utcnow)
 
     def to_dict(self):
@@ -145,6 +145,17 @@ class DatabaseManager:
         except Exception as e:
             self.db.rollback()
             logger.error(f"Failed to save chat: {str(e)}")
+            return False
+
+    def delete_all_chats(self) -> bool:
+        try:
+            self.db.query(Chatbot).delete()
+            self.db.commit()
+            logger.info("All chat records deleted successfully")
+            return True
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Failed to delete chats: {str(e)}")
             return False
 
     def save_api_key(self, user_id: str, api_key: str) -> bool:

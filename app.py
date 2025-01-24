@@ -22,16 +22,13 @@ from auth_utils import (
 from chat_manager import ChatManager, initialize_chat_state
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
 
 def initialize_state():
-    """Initialize session state variables"""
     if 'db_manager' not in st.session_state:
         st.session_state.db_manager = DatabaseManager()
 
 def handle_password_reset(tab3):
-    """Handle password reset logic"""
     with tab3:
         st.subheader("Reset Password")
         
@@ -59,13 +56,11 @@ def handle_password_reset(tab3):
                     st.error("Password tidak cocok")
                     return
                     
-                # Validate password
                 is_valid, message = validate_password(new_password)
                 if not is_valid:
                     st.error(message)
                     return
                     
-                # Check if email exists and reset password
                 user = st.session_state.db_manager.get_user_by_email(reset_email)
                 if not user:
                     st.error("Email tidak terdaftar")
@@ -79,10 +74,8 @@ def handle_password_reset(tab3):
                     st.error("Gagal mereset password")
 
 def render_login_page():
-    """Render the login page with all tabs"""
     initialize_state()
     
-    # Display header
     header = st.container()
     with header:
         col1, col2 = st.columns([1, 18])
@@ -94,10 +87,8 @@ def render_login_page():
     st.header("🤖 Chatku AI")
     st.caption("Chatku AI Dengan Retrieval Augmented Generation")
     
-    # Create tabs
     tab1, tab2, tab3 = st.tabs(["Login", "Daftar", "Lupa Password"])
     
-    # Login tab
     with tab1:
         with st.form("login_form"):
             st.subheader("Login")
@@ -122,7 +113,6 @@ def render_login_page():
                 else:
                     st.warning("Silakan isi email dan password")
     
-    # Register tab
     with tab2:
         with st.form("register_form"):
             st.subheader("Daftar Akun Baru")
@@ -170,7 +160,6 @@ def render_login_page():
                 else:
                     st.warning("Silakan lengkapi semua field")
     
-    # Handle Password Reset tab
     handle_password_reset(tab3)
 
 def handle_sidebar():
@@ -325,7 +314,11 @@ def handle_sidebar():
                 if 'chat_messages' in st.session_state:
                     st.session_state.chat_messages = []
                 
-                st.success("Semua data dan riwayat chat berhasil dihapus!")
+                # Delete chats from database
+                if st.session_state.db_manager.delete_all_chats():
+                    st.success("Semua data, riwayat chat, dan data chat di database berhasil dihapus!")
+                else:
+                    st.error("Gagal menghapus data chat dari database")
                 st.rerun()
             except Exception as e:
                 st.error(f"Gagal menghapus data: {str(e)}")
